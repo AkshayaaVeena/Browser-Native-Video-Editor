@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Browser HPC</title>
+    </head>
+    <body>
+        <canvas id="canvas" width="1000" height="1000"></canvas>
+        <p>Time : <span id="time">0ms</span></p>
+        <script>
+            const canvas=document.getElementById("canvas");
+            const ctx=canvas.getContext('2d');
+            const imageData=ctx.createImageData(4000,4000);
+            for(let i=0;i<imageData.data.length;i+=4)
+            {
+                imageData[i]=Math.random()*255;
+                imageData[i+1]=Math.random()*255;
+                imageData[i+2]=Math.random()*255;
+                imageData[i+3]=255;
+            }
+            const start=performance.now();
+
+            for(let i=0;i<imageData.data.length;i+=4)
+            {
+                imageData[i]*=1.2;
+                imageData[i+1]*=1.2;
+                imageData[i+2]*=1.2;
+            }
+            const end=performance.now();
+            console.log(`Time : ${end-start}ms`);
+        </script>
+    </body>
+</html>
