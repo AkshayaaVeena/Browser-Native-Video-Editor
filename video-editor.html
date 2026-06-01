@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Video Editor</title>
+        <style>
+        body { font-family: Arial; padding: 20px; }
+        video { border: 2px solid black; display: block; margin: 10px 0; width: 640px; height: 360px; }
+        canvas { border: 2px solid green; display: block; margin: 10px 0; width: 640px; height: 360px; }
+        button { padding: 10px; margin: 5px; cursor: pointer; }
+        </style>
+        <script src="GpuProcessor.js"></script>
+    </head>
+    <body>
+       <h1>🎬 Video Editor</h1>
+       <input type="file" id="videoFile" accept="video/*">
+       <video id="video" controls></video>
+       <canvas id="canvas" width="640" height="360"></canvas>
+       <button onclick="extractFrame()">📸 Extract Frame</button>
+       <button onclick="applyBrightness(1.5)">💡 Brightness (1.5×)</button>
+       <button onclick="applyBrightness(0.5)">🌙 Darken (0.5×)</button>
+       <button onclick="resetFrame()">🔄 Reset</button>
+             <script>
+                const videoFile = document.getElementById("videoFile");
+                const video = document.getElementById("video");
+                const canvas = document.getElementById('canvas');
+                const ctx = canvas.getContext('2d');
+
+                videoFile.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const url = URL.createObjectURL(file);
+                    video.src = url;
+                    console.log('Video loaded : ', file.name);
+
+                    video.addEventListener('loadedmetadata', () => {
+                        canvas.width = video.videoWidth || canvas.width;
+                        canvas.height = video.videoHeight || canvas.height;
+                        console.log('Video metadata loaded, canvas set to', canvas.width, 'x', canvas.height);
+                    }, { once: true });
+                });
+
+                let originalFrame = null;
+                let gpu = null;
+
+                function extractFrame() {
+                    if (!video.src) {
+                        console.log('No video loaded');
+                        return;
+                    }
+
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                    originalFrame=ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                    if(!gpu)
+                    {
+                        gpu = new GPUProcessor(document.createElement('canvas'));
+                        gpu.canvas.width = canvas.width;
+                        gpu.canvas.height = canvas.height;
+                        console.log('GPU Processor created (offscreen canvas)');
+                    }
+
+                    console.log('Frame loaded to canvas at time', video.currentTime);
+                }
+               function applyBrightness(value)
+               {
+                if(!originalFrame)
+                {
+                    console.log('No frame extracted');
+                    return;
+                }
+                console.log('Applying Brightness : ',value);
+                const brightFrame=gpu.brightness(originalFrame,value);
+
+                ctx.putImageData(brightFrame, 0, 0);
+                console.log('Brightness applied : ',value);
+               }
+               function resetFrame()
+               {
+                if(!originalFrame)
+                {
+                    console.log('No frame to reset');
+                    return;
+                }
+                ctx.putImageData(originalFrame, 0, 0);
+                console.log('Frame reset to original');
+               }
+             </script>
+    </body>
+</html>
