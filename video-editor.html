@@ -18,7 +18,19 @@
        <button onclick="extractFrame()">📸 Extract Frame</button>
        <button onclick="applyBrightness(1.5)">💡 Brightness (1.5×)</button>
        <button onclick="applyBrightness(0.5)">🌙 Darken (0.5×)</button>
+       <button onclick="applyGrayscale()">⚫ Grayscale</button>
+       <button onclick="applyContrast(1.5)">🎨 Contrast +</button>
+       <button onclick="applyContrast(0.5)">🎨 Contrast -</button>  
+       <button onclick="playWithEffects('brightness')">▶️ Play (Brightness)</button>
+       <button onclick="playWithEffects('grayscale')">▶️ Play (Grayscale)</button>
+       <button onclick="applyGrayscale()">⚫ Grayscale</button>
+       <button onclick="applyInvert()">🔄 Invert</button>
+       <button onclick="applySepia()">📷 Sepia</button>
+       <button onclick="applySaturation(1.5)">🌈 Saturation +</button>
+       <button onclick="applySaturation(0.5)">🌈 Saturation -</button>
+       <button onclick="stopPlayback()">⏹️ Stop</button>    
        <button onclick="resetFrame()">🔄 Reset</button>
+       <button onclick="exportFrame()">⬇️ Export Frame</button>
              <script>
                 const videoFile = document.getElementById("videoFile");
                 const video = document.getElementById("video");
@@ -85,6 +97,114 @@
                 ctx.putImageData(originalFrame, 0, 0);
                 console.log('Frame reset to original');
                }
+               function applyGrayscale()
+               {
+                if(!originalFrame)
+                {
+                    console.log('No frame extracted');
+                    return;
+                }
+                console.log('Applying grayscale');
+                const grayFrame = gpu.grayscale(originalFrame);
+                ctx.putImageData(grayFrame, 0, 0);
+                console.log('Grayscale applied');
+               }
+               function applyContrast(value){
+                if(!originalFrame){
+                    console.log('No frame extracted');
+                    return;
+                }
+                console.log('Applying Contrast:', value);
+                const contrastFrame = gpu.contrast(originalFrame, value);
+                ctx.putImageData(contrastFrame, 0, 0);
+                console.log('Contrast applied:', value);
+            }
+            let playLoop = null;
+            function playWithEffects(effectType) {
+                if (!gpu) {
+                    const offscreenCanvas = document.createElement('canvas');
+                    offscreenCanvas.width = canvas.width;
+                    offscreenCanvas.height = canvas.height;
+                    gpu = new GPUProcessor(offscreenCanvas);
+                    console.log('GPU processor created');
+                }
+                video.play();
+                playLoop = setInterval(() => {
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    let processedFrame;
+                    if (effectType === 'brightness') {
+                        processedFrame = gpu.brightness(frame, 1.5);
+                    } else if (effectType === 'grayscale') {
+                        processedFrame = gpu.grayscale(frame);
+                    } else if (effectType === 'contrast') {
+                        processedFrame = gpu.contrast(frame, 1.5);
+                    }
+                    ctx.putImageData(processedFrame, 0, 0);
+                    if (video.ended) {
+                        clearInterval(playLoop);
+                        console.log('Playback complete');
+                    }
+                }, 1000 / 30);
+            }
+            function stopPlayback() {
+                if (playLoop) {
+                    clearInterval(playLoop);
+                    video.pause();
+                    console.log('Playback stopped');
+                }
+            }
+            function applyInvert() {
+                if (!originalFrame) {
+                    console.log('No frame extracted');
+                    return;
+                }
+                console.log('Applying invert');
+                const invertFrame = gpu.invert(originalFrame);
+                ctx.putImageData(invertFrame, 0, 0);
+                console.log('Invert applied');
+            }
+            function applySepia() {
+                if (!originalFrame) {
+                    console.log('No frame extracted');
+                    return;
+                }
+                console.log('Applying sepia');
+                const sepiaFrame = gpu.sepia(originalFrame);
+                ctx.putImageData(sepiaFrame, 0, 0);
+                console.log('Sepia applied');
+            }
+            function applySaturation(value) {
+                if (!originalFrame) {
+                    console.log('No frame extracted');
+                    return;
+                }
+                console.log('Applying saturation:', value);
+                const satFrame = gpu.saturation(originalFrame, value);
+                ctx.putImageData(satFrame, 0, 0);
+                console.log('Saturation applied:', value);
+            }
+            function exportFrame() {
+                if (!originalFrame) {
+                    console.log('No frame to export');
+                    return;
+                }
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = originalFrame.width;
+  tempCanvas.height = originalFrame.height;
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCtx.putImageData(originalFrame, 0, 0);
+
+  tempCanvas.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `video-frame-${Date.now()}.png`;
+    link.click();
+    URL.revokeObjectURL(url);
+    console.log('Frame exported as PNG');
+  }, 'image/png');
+}
              </script>
     </body>
 </html>
