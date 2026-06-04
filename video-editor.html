@@ -1,210 +1,700 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <title>Video Editor</title>
-        <style>
-        body { font-family: Arial; padding: 20px; }
-        video { border: 2px solid black; display: block; margin: 10px 0; width: 640px; height: 360px; }
-        canvas { border: 2px solid green; display: block; margin: 10px 0; width: 640px; height: 360px; }
-        button { padding: 10px; margin: 5px; cursor: pointer; }
-        </style>
-        <script src="GpuProcessor.js"></script>
-    </head>
-    <body>
-       <h1>🎬 Video Editor</h1>
-       <input type="file" id="videoFile" accept="video/*">
-       <video id="video" controls></video>
-       <canvas id="canvas" width="640" height="360"></canvas>
-       <button onclick="extractFrame()">📸 Extract Frame</button>
-       <button onclick="applyBrightness(1.5)">💡 Brightness (1.5×)</button>
-       <button onclick="applyBrightness(0.5)">🌙 Darken (0.5×)</button>
-       <button onclick="applyGrayscale()">⚫ Grayscale</button>
-       <button onclick="applyContrast(1.5)">🎨 Contrast +</button>
-       <button onclick="applyContrast(0.5)">🎨 Contrast -</button>  
-       <button onclick="playWithEffects('brightness')">▶️ Play (Brightness)</button>
-       <button onclick="playWithEffects('grayscale')">▶️ Play (Grayscale)</button>
-       <button onclick="applyGrayscale()">⚫ Grayscale</button>
-       <button onclick="applyInvert()">🔄 Invert</button>
-       <button onclick="applySepia()">📷 Sepia</button>
-       <button onclick="applySaturation(1.5)">🌈 Saturation +</button>
-       <button onclick="applySaturation(0.5)">🌈 Saturation -</button>
-       <button onclick="stopPlayback()">⏹️ Stop</button>    
-       <button onclick="resetFrame()">🔄 Reset</button>
-       <button onclick="exportFrame()">⬇️ Export Frame</button>
-             <script>
-                const videoFile = document.getElementById("videoFile");
-                const video = document.getElementById("video");
-                const canvas = document.getElementById('canvas');
-                const ctx = canvas.getContext('2d');
-
-                videoFile.addEventListener('change', (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    const url = URL.createObjectURL(file);
-                    video.src = url;
-                    console.log('Video loaded : ', file.name);
-
-                    video.addEventListener('loadedmetadata', () => {
-                        canvas.width = video.videoWidth || canvas.width;
-                        canvas.height = video.videoHeight || canvas.height;
-                        console.log('Video metadata loaded, canvas set to', canvas.width, 'x', canvas.height);
-                    }, { once: true });
-                });
-
-                let originalFrame = null;
-                let gpu = null;
-
-                function extractFrame() {
-                    if (!video.src) {
-                        console.log('No video loaded');
-                        return;
-                    }
-
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                
-                    originalFrame=ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-                    if(!gpu)
-                    {
-                        gpu = new GPUProcessor(document.createElement('canvas'));
-                        gpu.canvas.width = canvas.width;
-                        gpu.canvas.height = canvas.height;
-                        console.log('GPU Processor created (offscreen canvas)');
-                    }
-
-                    console.log('Frame loaded to canvas at time', video.currentTime);
-                }
-               function applyBrightness(value)
-               {
-                if(!originalFrame)
-                {
-                    console.log('No frame extracted');
-                    return;
-                }
-                console.log('Applying Brightness : ',value);
-                const brightFrame=gpu.brightness(originalFrame,value);
-
-                ctx.putImageData(brightFrame, 0, 0);
-                console.log('Brightness applied : ',value);
-               }
-               function resetFrame()
-               {
-                if(!originalFrame)
-                {
-                    console.log('No frame to reset');
-                    return;
-                }
-                ctx.putImageData(originalFrame, 0, 0);
-                console.log('Frame reset to original');
-               }
-               function applyGrayscale()
-               {
-                if(!originalFrame)
-                {
-                    console.log('No frame extracted');
-                    return;
-                }
-                console.log('Applying grayscale');
-                const grayFrame = gpu.grayscale(originalFrame);
-                ctx.putImageData(grayFrame, 0, 0);
-                console.log('Grayscale applied');
-               }
-               function applyContrast(value){
-                if(!originalFrame){
-                    console.log('No frame extracted');
-                    return;
-                }
-                console.log('Applying Contrast:', value);
-                const contrastFrame = gpu.contrast(originalFrame, value);
-                ctx.putImageData(contrastFrame, 0, 0);
-                console.log('Contrast applied:', value);
-            }
-            let playLoop = null;
-            function playWithEffects(effectType) {
-                if (!gpu) {
-                    const offscreenCanvas = document.createElement('canvas');
-                    offscreenCanvas.width = canvas.width;
-                    offscreenCanvas.height = canvas.height;
-                    gpu = new GPUProcessor(offscreenCanvas);
-                    console.log('GPU processor created');
-                }
-                video.play();
-                playLoop = setInterval(() => {
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    let processedFrame;
-                    if (effectType === 'brightness') {
-                        processedFrame = gpu.brightness(frame, 1.5);
-                    } else if (effectType === 'grayscale') {
-                        processedFrame = gpu.grayscale(frame);
-                    } else if (effectType === 'contrast') {
-                        processedFrame = gpu.contrast(frame, 1.5);
-                    }
-                    ctx.putImageData(processedFrame, 0, 0);
-                    if (video.ended) {
-                        clearInterval(playLoop);
-                        console.log('Playback complete');
-                    }
-                }, 1000 / 30);
-            }
-            function stopPlayback() {
-                if (playLoop) {
-                    clearInterval(playLoop);
-                    video.pause();
-                    console.log('Playback stopped');
-                }
-            }
-            function applyInvert() {
-                if (!originalFrame) {
-                    console.log('No frame extracted');
-                    return;
-                }
-                console.log('Applying invert');
-                const invertFrame = gpu.invert(originalFrame);
-                ctx.putImageData(invertFrame, 0, 0);
-                console.log('Invert applied');
-            }
-            function applySepia() {
-                if (!originalFrame) {
-                    console.log('No frame extracted');
-                    return;
-                }
-                console.log('Applying sepia');
-                const sepiaFrame = gpu.sepia(originalFrame);
-                ctx.putImageData(sepiaFrame, 0, 0);
-                console.log('Sepia applied');
-            }
-            function applySaturation(value) {
-                if (!originalFrame) {
-                    console.log('No frame extracted');
-                    return;
-                }
-                console.log('Applying saturation:', value);
-                const satFrame = gpu.saturation(originalFrame, value);
-                ctx.putImageData(satFrame, 0, 0);
-                console.log('Saturation applied:', value);
-            }
-            function exportFrame() {
-                if (!originalFrame) {
-                    console.log('No frame to export');
-                    return;
-                }
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = originalFrame.width;
-  tempCanvas.height = originalFrame.height;
-  const tempCtx = tempCanvas.getContext('2d');
-  tempCtx.putImageData(originalFrame, 0, 0);
-
-  tempCanvas.toBlob((blob) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `video-frame-${Date.now()}.png`;
-    link.click();
-    URL.revokeObjectURL(url);
-    console.log('Frame exported as PNG');
-  }, 'image/png');
+<head>
+  <title>🎬 GPU Video Editor</title>
+  <style>
+    * {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
-             </script>
-    </body>
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #0f0f1e;
+  min-height: 100vh;
+  padding: 30px 20px;
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  background: #1a1a2e;
+  border-radius: 15px;
+  padding: 30px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 2px solid #9d4edd;
+}
+
+h1 {
+  text-align: center;
+  background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 30px;
+  font-size: 2em;
+}
+
+.section {
+  margin-bottom: 25px;
+  padding-bottom: 25px;
+  border-bottom: 2px solid #3a3a5c;
+}
+
+.section h2 {
+  color: #9d4edd;
+  font-size: 0.95em;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+h3 {
+  color: #ff006e !important;
+}
+
+video, canvas {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 10px;
+  margin-bottom: 15px;
+  border: 3px solid #9d4edd;
+}
+
+input[type="file"] {
+  display: block;
+  margin-bottom: 15px;
+  padding: 10px;
+  border: 2px dashed #9d4edd;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  background: #2a2a3e;
+  color: #fff;
+}
+
+.button-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+button {
+  background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
+  color: white;
+  border: none;
+  padding: 12px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9em;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(157, 78, 221, 0.4);
+}
+
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(255, 0, 110, 0.5);
+}
+
+.info-text {
+  color: #aaa;
+  font-size: 0.9em;
+  margin-top: 10px;
+}
+
+.warning {
+  background: #3a3a5c;
+  border-left: 4px solid #ff006e;
+  padding: 12px;
+  border-radius: 5px;
+  color: #ddd;
+  margin-top: 10px;
+  font-size: 0.9em;
+}
+  </style>
+  <script src="GpuProcessor.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>🎬 GPU Video Editor</h1>
+
+    <div class="section">
+      <h2>📁 Load Video</h2>
+      <input type="file" id="videoFile" accept="video/*">
+      <div class="info-text">✓ Supports: MP4, WebM</div>
+    </div>
+
+    <div class="section">
+      <h2>👁️ Preview</h2>
+      <video id="video" controls></video>
+      <canvas id="canvas" width="640" height="360"></canvas>
+    </div>
+
+    <div class="section">
+      <h2>📸 Frame Control</h2>
+      <div class="button-group">
+        <button onclick="extractFrame()">📸 Extract Frame</button>
+        <button onclick="resetFrame()">🔄 Reset</button>
+        <button onclick="exportFrame()">⬇️ Export Frame</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>✨ Effects</h2>
+      
+      <h3 style="color: #333; font-size: 0.9em; margin-top: 15px; margin-bottom: 8px;">Brightness</h3>
+      <div class="button-group">
+        <button onclick="applyBrightness(1.5)">💡 Brighten</button>
+        <button onclick="applyBrightness(0.5)">🌙 Darken</button>
+      </div>
+
+      <h3 style="color: #333; font-size: 0.9em; margin-top: 15px; margin-bottom: 8px;">Color</h3>
+      <div class="button-group">
+        <button onclick="applyGrayscale()">⚫ Grayscale</button>
+        <button onclick="applySepia()">📷 Sepia</button>
+        <button onclick="applyInvert()">🔄 Invert</button>
+      </div>
+
+      <h3 style="color: #333; font-size: 0.9em; margin-top: 15px; margin-bottom: 8px;">Adjustment</h3>
+      <div class="button-group">
+        <button onclick="applyContrast(1.5)">🎨 Contrast +</button>
+        <button onclick="applyContrast(0.5)">🎨 Contrast -</button>
+        <button onclick="applySaturation(1.5)">🌈 Saturate +</button>
+        <button onclick="applySaturation(0.5)">🌈 Saturate -</button>
+      </div>
+    </div>
+
+    <div class="section">
+  <h2>📊 Timeline Editor</h2>
+  
+  <!-- Preset Presets -->
+  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+    <h3 style="color: #ff006e; margin-bottom: 10px;">Quick Presets (One-Click)</h3>
+    <div class="button-group">
+      <button onclick="addPresetEffect('cinematic')">🎬 Cinematic</button>
+      <button onclick="addPresetEffect('vibrant')">✨ Vibrant</button>
+      <button onclick="addPresetEffect('goldenHour')">🌅 Golden Hour</button>
+      <button onclick="addPresetEffect('coolMoody')">🌙 Cool Moody</button>
+      <button onclick="addPresetEffect('instagram')">📸 Instagram</button>
+      <button onclick="addPresetEffect('youTube')">📺 YouTube</button>
+    </div>
+  </div>
+
+  <!-- Manual Effects -->
+  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+    <h3 style="color: #ff006e; margin-bottom: 10px;">Custom Effects</h3>
+    <div class="button-group">
+      <button onclick="addEffectToTimeline('brightness')">☀️ Brightness</button>
+      <button onclick="addEffectToTimeline('temperature')">🔥 Warm/Cool</button>
+      <button onclick="addEffectToTimeline('saturation')">🌈 Vibrant</button>
+      <button onclick="addEffectToTimeline('contrast')">🎨 Contrast</button>
+      <button onclick="addEffectToTimeline('sharpen')">🔪 Detail</button>
+      <button onclick="addEffectToTimeline('blur')">💨 Blur</button>
+      <button onclick="addEffectToTimeline('vignette')">🌑 Edges</button>
+    </div>
+  </div>
+
+  <div id="timelineRuler" style="display: flex; justify-content: space-between; font-size: 0.8em; color: #9d4edd; margin-bottom: 10px; padding: 0 10px;">
+    <span>0s</span>
+    <span>5s</span>
+    <span>10s</span>
+    <span>15s</span>
+    <span>20s</span>
+  </div>
+
+  <div id="timelineTrack" style="position: relative; background: #1a1a2e; border: 2px solid #9d4edd; height: 80px; border-radius: 5px; overflow-x: auto;">
+    <div id="playhead" style="position: absolute; left: 0; top: 0; width: 2px; height: 100%; background: #ff006e; z-index: 10;"></div>
+    <div id="effectBlocks" style="position: relative; width: 100%; height: 100%;"></div>
+  </div>
+
+  <!-- Playback Controls -->
+  <div class="button-group" style="margin-top: 15px;">
+    <button onclick="playTimeline()">▶️ Play Timeline</button>
+    <button onclick="stopTimeline()">⏹️ Stop</button>
+  </div>
+</div>
+
+  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px;">
+    <h3 style="color: #ff006e; margin-bottom: 10px;">Effect Properties</h3>
+    
+    <div style="margin-bottom: 15px;">
+      <label style="color: #aaa; display: block; margin-bottom: 5px;">Start Time (seconds)</label>
+      <input type="range" id="effectStart" min="0" max="60" value="0" style="width: 100%;">
+      <span id="effectStartValue" style="color: #9d4edd; font-size: 0.9em;">0s</span>
+    </div>
+
+    <div style="margin-bottom: 15px;">
+      <label style="color: #aaa; display: block; margin-bottom: 5px;">End Time (seconds)</label>
+      <input type="range" id="effectEnd" min="0" max="60" value="10" style="width: 100%;">
+      <span id="effectEndValue" style="color: #9d4edd; font-size: 0.9em;">10s</span>
+    </div>
+
+    <div style="margin-bottom: 15px;">
+      <label style="color: #aaa; display: block; margin-bottom: 5px;">Effect Intensity</label>
+      <input type="range" id="effectValue" min="0.5" max="2" step="0.1" value="1.5" style="width: 100%;">
+      <span id="effectValueDisplay" style="color: #9d4edd; font-size: 0.9em;">1.5x</span>
+    </div>
+
+    <div class="button-group">
+      <button onclick="updateSelectedEffect()">✅ Apply Changes</button>
+      <button onclick="deleteSelectedEffect()">🗑️ Delete</button>
+    </div>
+  </div>
+</div>
+  
+  </div>
+</div>
+
+  <script>
+    const videoFile = document.getElementById("videoFile");
+    const video = document.getElementById("video");
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const frameCanvas = document.createElement('canvas');
+    const frameCtx = frameCanvas.getContext('2d');
+
+    videoFile.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      video.src = url;
+      console.log('Video loaded:', file.name);
+
+      video.addEventListener('loadedmetadata', () => {
+        canvas.width = video.videoWidth || canvas.width;
+        canvas.height = video.videoHeight || canvas.height;
+        frameCanvas.width = video.videoWidth;
+        frameCanvas.height = video.videoHeight;
+        console.log('Canvas resized to', canvas.width, 'x', canvas.height);
+      }, { once: true });
+    });
+
+    let originalFrame = null;
+    let gpu = null;
+
+    function extractFrame() {
+      if (!video.src) {
+        alert('Please load a video first');
+        return;
+      }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      originalFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      if (!gpu) {
+        gpu = new GPUProcessor(document.createElement('canvas'));
+        gpu.canvas.width = canvas.width;
+        gpu.canvas.height = canvas.height;
+        console.log('GPU Processor created');
+      }
+      console.log('Frame extracted at', video.currentTime.toFixed(2), 's');
+    }
+
+    function applyBrightness(value) {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const brightFrame = gpu.brightness(originalFrame, value);
+      renderFrame(brightFrame);
+    }
+
+    function resetFrame() {
+      if (!originalFrame) { alert('No frame to reset'); return; }
+      renderFrame(originalFrame);
+    }
+
+    function applyGrayscale() {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const grayFrame = gpu.grayscale(originalFrame);
+      renderFrame(grayFrame);
+    }
+
+    function applyContrast(value) {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const contrastFrame = gpu.contrast(originalFrame, value);
+      renderFrame(contrastFrame);
+    }
+
+    function applyInvert() {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const invertFrame = gpu.invert(originalFrame); 
+      renderFrame(invertFrame);
+    }
+
+    function applySepia() {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const sepiaFrame = gpu.sepia(originalFrame);
+      renderFrame(sepiaFrame);
+    }
+
+    function applySaturation(value) {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const satFrame = gpu.saturation(originalFrame, value);
+      renderFrame(satFrame);
+    }
+
+    let playLoop = null;
+
+
+function getVideoFrame() {
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = canvas.width;
+  tempCanvas.height = canvas.height;
+  const tempCtx = tempCanvas.getContext('2d');
+
+  tempCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return tempCtx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+let animationId = null;
+
+function startRealTimePreview(effectType) {
+  const previewGpu = new GPUProcessor(canvas);
+  canvas.width = video.videoWidth || canvas.width;
+  canvas.height = video.videoHeight || canvas.height;
+
+  video.play();
+
+  function render() {
+    if (video.paused || video.ended) {
+      cancelAnimationFrame(animationId);
+      return;
+    }
+
+    if (effectType === "brightness") {
+      previewGpu.renderVideoFrame(video, `
+        precision mediump float;
+        uniform sampler2D image;
+        varying vec2 texCoord;
+        void main() {
+          vec4 color = texture2D(image, texCoord);
+          gl_FragColor = color * 1.5;
+        }
+      `);
+    }
+
+    else if (effectType === "grayscale") {
+      previewGpu.renderVideoFrame(video, `
+        precision mediump float;
+        uniform sampler2D image;
+        varying vec2 texCoord;
+        void main() {
+          vec4 color = texture2D(image, texCoord);
+          float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+          gl_FragColor = vec4(vec3(gray), 1.0);
+        }
+      `);
+    }
+
+    animationId = requestAnimationFrame(render);
+  }
+
+  render();
+}
+
+function stopPlayback() {
+  video.pause();
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  }
+}
+
+    function renderFrame(imageData) {
+     ctx.putImageData(imageData, 0, 0);
+    }
+
+    function exportFrame() {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = originalFrame.width;
+      tempCanvas.height = originalFrame.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.putImageData(originalFrame, 0, 0);
+
+      tempCanvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `frame-${Date.now()}.png`;
+        link.click();
+        URL.revokeObjectURL(url);
+        console.log('Frame exported');
+      }, 'image/png');
+    }
+
+let timelineEffects = [];
+let selectedEffectIndex = null;
+let isPlayingTimeline = false;
+let timelinePlaybackId = null;
+
+const effectPresets = {
+  cinematic: {
+    contrast: 1.3,
+    saturation: 0.9,
+    temperature: 0.3,
+    exposure: 0.9
+  },
+  vibrant: {
+    saturation: 1.8,
+    vibrance: 0.5,
+    exposure: 1.1,
+    contrast: 1.2
+  },
+  goldenHour: {
+    temperature: 0.8,
+    exposure: 1.2,
+    vignette: 0.4,
+    saturation: 1.3
+  },
+  coolMoody: {
+    temperature: -0.6,
+    exposure: 0.8,
+    contrast: 1.4,
+    vibrance: -0.2
+  },
+  instagram: {
+    saturation: 1.5,
+    contrast: 1.2,
+    vignette: 0.2,
+    exposure: 1.05
+  },
+  youTube: {
+    contrast: 1.3,
+    saturation: 1.1,
+    temperature: 0.2,
+    exposure: 1.05
+  }
+};
+
+function addEffectToTimeline(effectType) {
+  if (!video.src) {
+    alert('Load a video first');
+    return;
+  }
+
+  const effect = {
+    type: effectType,
+    start: 0,
+    end: 10,
+    value: 1.5,
+    id: Date.now()
+  };
+
+  timelineEffects.push(effect);
+  console.log('✅ Effect added:', effect);
+  renderTimeline();
+}
+
+// Render timeline UI
+function renderTimeline() {
+  const container = document.getElementById('effectBlocks');
+  container.innerHTML = '';
+
+  timelineEffects.forEach((effect, index) => {
+    const duration = video.duration || 60;
+    const trackWidth = 800; // pixels
+    
+    const startPercent = (effect.start / duration) * 100;
+    const widthPercent = ((effect.end - effect.start) / duration) * 100;
+
+    const block = document.createElement('div');
+    block.style.cssText = `
+      position: absolute;
+      left: ${startPercent}%;
+      width: ${widthPercent}%;
+      height: 60px;
+      background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
+      border: 2px solid #fff;
+      border-radius: 5px;
+      cursor: pointer;
+      top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 0.8em;
+      font-weight: 600;
+      z-index: 5;
+    `;
+
+    block.textContent = `${effect.type} (${effect.start}s-${effect.end}s)`;
+    block.onclick = () => selectEffect(index);
+    container.appendChild(block);
+  });
+}
+
+// Select effect for editing
+function selectEffect(index) {
+  selectedEffectIndex = index;
+  const effect = timelineEffects[index];
+
+  document.getElementById('effectStart').value = effect.start;
+  document.getElementById('effectStartValue').textContent = effect.start + 's';
+  
+  document.getElementById('effectEnd').value = effect.end;
+  document.getElementById('effectEndValue').textContent = effect.end + 's';
+  
+  document.getElementById('effectValue').value = effect.value;
+  document.getElementById('effectValueDisplay').textContent = effect.value + 'x';
+
+  console.log('Selected effect:', effect);
+}
+
+// Update effect properties
+document.getElementById('effectStart').addEventListener('input', (e) => {
+  document.getElementById('effectStartValue').textContent = e.target.value + 's';
+});
+
+document.getElementById('effectEnd').addEventListener('input', (e) => {
+  document.getElementById('effectEndValue').textContent = e.target.value + 's';
+});
+
+document.getElementById('effectValue').addEventListener('input', (e) => {
+  document.getElementById('effectValueDisplay').textContent = e.target.value + 'x';
+});
+
+function updateSelectedEffect() {
+  if (selectedEffectIndex === null) {
+    alert('Select an effect first');
+    return;
+  }
+
+  timelineEffects[selectedEffectIndex].start = parseFloat(document.getElementById('effectStart').value);
+  timelineEffects[selectedEffectIndex].end = parseFloat(document.getElementById('effectEnd').value);
+  timelineEffects[selectedEffectIndex].value = parseFloat(document.getElementById('effectValue').value);
+
+  console.log('✅ Effect updated');
+  renderTimeline();
+}
+
+function deleteSelectedEffect() {
+  if (selectedEffectIndex === null) {
+    alert('Select an effect first');
+    return;
+  }
+
+  timelineEffects.splice(selectedEffectIndex, 1);
+  selectedEffectIndex = null;
+  console.log('🗑️ Effect deleted');
+  renderTimeline();
+}
+
+function stopTimeline() {
+  video.pause();
+  isPlayingTimeline = false;
+  if (timelinePlaybackId) {
+    cancelAnimationFrame(timelinePlaybackId);
+  }
+}
+
+function playTimeline() {
+  if (!video.src) {
+    alert('Load a video first');
+    return;
+  }
+
+  if (timelineEffects.length === 0) {
+    alert('Add effects to timeline first');
+    return;
+  }
+
+  if (!gpu) {
+    const offscreen = document.createElement('canvas');
+    offscreen.width = canvas.width;
+    offscreen.height = canvas.height;
+    gpu = new GPUProcessor(offscreen);
+  }
+
+  video.play();
+  isPlayingTimeline = true;
+
+  function renderTimelineFrame() {
+    if (!isPlayingTimeline || video.paused || video.ended) {
+      cancelAnimationFrame(timelinePlaybackId);
+      return;
+    }
+
+    const currentTime = video.currentTime;
+
+    frameCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    let frameData = frameCtx.getImageData(0, 0, canvas.width, canvas.height);
+
+    timelineEffects.forEach(effect => {
+      if (currentTime >= effect.start && currentTime <= effect.end) {
+        try {
+          if (effect.type === 'brightness') {
+            frameData = gpu.brightness(frameData, effect.value);
+          } else if (effect.type === 'grayscale') {
+            frameData = gpu.grayscale(frameData);
+          } else if (effect.type === 'contrast') {
+            frameData = gpu.contrast(frameData, effect.value);
+          } else if (effect.type === 'saturation') {
+            frameData = gpu.saturation(frameData, effect.value);
+          } else if (effect.type === 'exposure') {
+            frameData = gpu.exposure(frameData, effect.value);
+          } else if (effect.type === 'sharpen') {
+            frameData = gpu.sharpen(frameData, effect.value);
+          } else if (effect.type === 'blur') {
+            frameData = gpu.blur(frameData, effect.value);
+          } else if (effect.type === 'vibrance') {
+            frameData = gpu.vibrance(frameData, effect.value);
+          } else if (effect.type === 'temperature') {
+            frameData = gpu.temperature(frameData, effect.value);
+          } else if (effect.type === 'hueShift') {
+            frameData = gpu.hueShift(frameData, effect.value);
+          } else if (effect.type === 'vignette') {
+            frameData = gpu.vignette(frameData, effect.value);
+          } else if (effect.type === 'sepia') {
+            frameData = gpu.sepia(frameData);
+          } else if (effect.type === 'invert') {
+            frameData = gpu.invert(frameData);
+          }
+        } catch (e) {
+          console.warn('Effect error:', e);
+        }
+      }
+    });
+
+    // Display frame
+    ctx.putImageData(frameData, 0, 0);
+
+    // Update playhead
+    const duration = video.duration || 60;
+    const playheadPos = (currentTime / duration) * 100;
+    document.getElementById('playhead').style.left = playheadPos + '%';
+
+    timelinePlaybackId = requestAnimationFrame(renderTimelineFrame);
+  }
+
+  renderTimelineFrame();
+}
+
+function addPresetEffect(presetName) {
+  if (!video.src) {
+    alert('Load a video first');
+    return;
+  }
+
+  const preset = effectPresets[presetName];
+  if (!preset) return;
+
+  // Simply add each effect individually
+  Object.keys(preset).forEach(effectType => {
+    const value = preset[effectType];
+    timelineEffects.push({
+      type: effectType,
+      start: 0,
+      end: 10,
+      value: value,
+      id: Date.now() + Math.random()
+    });
+  });
+
+  console.log('✅ Preset added:', presetName);
+  renderTimeline();
+}
+  </script>
+</body>
 </html>
