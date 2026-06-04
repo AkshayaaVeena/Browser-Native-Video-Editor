@@ -113,9 +113,10 @@ button:hover {
   color: #ddd;
   margin-top: 10px;
   font-size: 0.9em;
-}
+ }
   </style>
   <script src="GpuProcessor.js"></script>
+  <script src="app.js"></script>
 </head>
 <body>
   <div class="container">
@@ -169,8 +170,7 @@ button:hover {
 
     <div class="section">
   <h2>📊 Timeline Editor</h2>
-  
-  <!-- Preset Presets -->
+
   <div style="background: #2a2a3e; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
     <h3 style="color: #ff006e; margin-bottom: 10px;">Quick Presets (One-Click)</h3>
     <div class="button-group">
@@ -183,7 +183,6 @@ button:hover {
     </div>
   </div>
 
-  <!-- Manual Effects -->
   <div style="background: #2a2a3e; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
     <h3 style="color: #ff006e; margin-bottom: 10px;">Custom Effects</h3>
     <div class="button-group">
@@ -196,6 +195,12 @@ button:hover {
       <button onclick="addEffectToTimeline('vignette')">🌑 Edges</button>
     </div>
   </div>
+
+  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px; margin-top: 15px;">
+  <h3 style="color: #ff006e; margin-bottom: 10px;">Effect Tracks</h3>
+  <div id="effectTracks" style="max-height: 300px; overflow-y: auto;"></div>
+  <button onclick="addEffectTrack()" style="margin-top: 10px;">➕ New Track</button>
+</div>
 
   <div id="timelineRuler" style="display: flex; justify-content: space-between; font-size: 0.8em; color: #9d4edd; margin-bottom: 10px; padding: 0 10px;">
     <span>0s</span>
@@ -210,11 +215,16 @@ button:hover {
     <div id="effectBlocks" style="position: relative; width: 100%; height: 100%;"></div>
   </div>
 
-  <!-- Playback Controls -->
   <div class="button-group" style="margin-top: 15px;">
     <button onclick="playTimeline()">▶️ Play Timeline</button>
     <button onclick="stopTimeline()">⏹️ Stop</button>
   </div>
+</div>
+
+ <div style="margin-top: 15px; display: flex; align-items: center; gap: 10px;">
+  <label style="color: #aaa;">Timeline Zoom:</label>
+  <input type="range" id="timelineZoom" min="0.5" max="3" step="0.1" value="1" style="width: 200px;">
+  <span id="zoomValue" style="color: #9d4edd; min-width: 40px;">100%</span>
 </div>
 
   <div style="background: #2a2a3e; border-radius: 8px; padding: 15px;">
@@ -244,457 +254,92 @@ button:hover {
     </div>
   </div>
 </div>
+
+<div class="section">
+  <h2>💾 Export Video</h2>
   
+  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px;">
+    <h3 style="color: #ff006e; margin-bottom: 10px;">Download Your Video</h3>
+    <div style="margin-bottom: 15px;">
+      <p style="color: #aaa; font-size: 0.9em;">
+        📽️ Your video will be processed with all timeline effects applied.
+      </p>
+    </div>
+    <div class="button-group">
+      <button onclick="startExport()" id="exportStartBtn">🔴 Start Recording</button>
+      <button onclick="stopExport()" id="exportStopBtn" disabled>⏹️ Stop & Download</button>
+    </div>
+
+    <div id="exportStatus" style="
+      margin-top: 15px;
+      padding: 12px;
+      background: #1a1a2e;
+      border-radius: 5px;
+      color: #9d4edd;
+      font-size: 0.9em;
+      min-height: 30px;
+    "></div>
+
+    <div style="
+      margin-top: 15px;
+      padding: 12px;
+      background: #3a3a5c;
+      border-left: 3px solid #ff006e;
+      border-radius: 5px;
+      color: #ddd;
+      font-size: 0.85em;
+    ">
+      ⚠️ <strong>Note:</strong> Processing time depends on video length. 
+      Do not close the tab during export.
+    </div>
   </div>
 </div>
 
-  <script>
-    const videoFile = document.getElementById("videoFile");
-    const video = document.getElementById("video");
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-
-    const frameCanvas = document.createElement('canvas');
-    const frameCtx = frameCanvas.getContext('2d');
-
-    videoFile.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const url = URL.createObjectURL(file);
-      video.src = url;
-      console.log('Video loaded:', file.name);
-
-      video.addEventListener('loadedmetadata', () => {
-        canvas.width = video.videoWidth || canvas.width;
-        canvas.height = video.videoHeight || canvas.height;
-        frameCanvas.width = video.videoWidth;
-        frameCanvas.height = video.videoHeight;
-        console.log('Canvas resized to', canvas.width, 'x', canvas.height);
-      }, { once: true });
-    });
-
-    let originalFrame = null;
-    let gpu = null;
-
-    function extractFrame() {
-      if (!video.src) {
-        alert('Please load a video first');
-        return;
-      }
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      originalFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-      if (!gpu) {
-        gpu = new GPUProcessor(document.createElement('canvas'));
-        gpu.canvas.width = canvas.width;
-        gpu.canvas.height = canvas.height;
-        console.log('GPU Processor created');
-      }
-      console.log('Frame extracted at', video.currentTime.toFixed(2), 's');
-    }
-
-    function applyBrightness(value) {
-      if (!originalFrame) { alert('Extract frame first'); return; }
-      const brightFrame = gpu.brightness(originalFrame, value);
-      renderFrame(brightFrame);
-    }
-
-    function resetFrame() {
-      if (!originalFrame) { alert('No frame to reset'); return; }
-      renderFrame(originalFrame);
-    }
-
-    function applyGrayscale() {
-      if (!originalFrame) { alert('Extract frame first'); return; }
-      const grayFrame = gpu.grayscale(originalFrame);
-      renderFrame(grayFrame);
-    }
-
-    function applyContrast(value) {
-      if (!originalFrame) { alert('Extract frame first'); return; }
-      const contrastFrame = gpu.contrast(originalFrame, value);
-      renderFrame(contrastFrame);
-    }
-
-    function applyInvert() {
-      if (!originalFrame) { alert('Extract frame first'); return; }
-      const invertFrame = gpu.invert(originalFrame); 
-      renderFrame(invertFrame);
-    }
-
-    function applySepia() {
-      if (!originalFrame) { alert('Extract frame first'); return; }
-      const sepiaFrame = gpu.sepia(originalFrame);
-      renderFrame(sepiaFrame);
-    }
-
-    function applySaturation(value) {
-      if (!originalFrame) { alert('Extract frame first'); return; }
-      const satFrame = gpu.saturation(originalFrame, value);
-      renderFrame(satFrame);
-    }
-
-    let playLoop = null;
-
-
-function getVideoFrame() {
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = canvas.width;
-  tempCanvas.height = canvas.height;
-  const tempCtx = tempCanvas.getContext('2d');
-
-  tempCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  return tempCtx.getImageData(0, 0, canvas.width, canvas.height);
-}
-
-let animationId = null;
-
-function startRealTimePreview(effectType) {
-  const previewGpu = new GPUProcessor(canvas);
-  canvas.width = video.videoWidth || canvas.width;
-  canvas.height = video.videoHeight || canvas.height;
-
-  video.play();
-
-  function render() {
-    if (video.paused || video.ended) {
-      cancelAnimationFrame(animationId);
-      return;
-    }
-
-    if (effectType === "brightness") {
-      previewGpu.renderVideoFrame(video, `
-        precision mediump float;
-        uniform sampler2D image;
-        varying vec2 texCoord;
-        void main() {
-          vec4 color = texture2D(image, texCoord);
-          gl_FragColor = color * 1.5;
-        }
-      `);
-    }
-
-    else if (effectType === "grayscale") {
-      previewGpu.renderVideoFrame(video, `
-        precision mediump float;
-        uniform sampler2D image;
-        varying vec2 texCoord;
-        void main() {
-          vec4 color = texture2D(image, texCoord);
-          float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-          gl_FragColor = vec4(vec3(gray), 1.0);
-        }
-      `);
-    }
-
-    animationId = requestAnimationFrame(render);
-  }
-
-  render();
-}
-
-function stopPlayback() {
-  video.pause();
-  if (animationId) {
-    cancelAnimationFrame(animationId);
-    animationId = null;
-  }
-}
-
-    function renderFrame(imageData) {
-     ctx.putImageData(imageData, 0, 0);
-    }
-
-    function exportFrame() {
-      if (!originalFrame) { alert('Extract frame first'); return; }
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = originalFrame.width;
-      tempCanvas.height = originalFrame.height;
-      const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.putImageData(originalFrame, 0, 0);
-
-      tempCanvas.toBlob((blob) => {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `frame-${Date.now()}.png`;
-        link.click();
-        URL.revokeObjectURL(url);
-        console.log('Frame exported');
-      }, 'image/png');
-    }
-
-let timelineEffects = [];
-let selectedEffectIndex = null;
-let isPlayingTimeline = false;
-let timelinePlaybackId = null;
-
-const effectPresets = {
-  cinematic: {
-    contrast: 1.3,
-    saturation: 0.9,
-    temperature: 0.3,
-    exposure: 0.9
-  },
-  vibrant: {
-    saturation: 1.8,
-    vibrance: 0.5,
-    exposure: 1.1,
-    contrast: 1.2
-  },
-  goldenHour: {
-    temperature: 0.8,
-    exposure: 1.2,
-    vignette: 0.4,
-    saturation: 1.3
-  },
-  coolMoody: {
-    temperature: -0.6,
-    exposure: 0.8,
-    contrast: 1.4,
-    vibrance: -0.2
-  },
-  instagram: {
-    saturation: 1.5,
-    contrast: 1.2,
-    vignette: 0.2,
-    exposure: 1.05
-  },
-  youTube: {
-    contrast: 1.3,
-    saturation: 1.1,
-    temperature: 0.2,
-    exposure: 1.05
-  }
-};
-
-function addEffectToTimeline(effectType) {
-  if (!video.src) {
-    alert('Load a video first');
-    return;
-  }
-
-  const effect = {
-    type: effectType,
-    start: 0,
-    end: 10,
-    value: 1.5,
-    id: Date.now()
-  };
-
-  timelineEffects.push(effect);
-  console.log('✅ Effect added:', effect);
-  renderTimeline();
-}
-
-// Render timeline UI
-function renderTimeline() {
-  const container = document.getElementById('effectBlocks');
-  container.innerHTML = '';
-
-  timelineEffects.forEach((effect, index) => {
-    const duration = video.duration || 60;
-    const trackWidth = 800; // pixels
+<div class="section">
+  <h2>💾 Project Management</h2>
+  
+  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px;">
+    <h3 style="color: #ff006e; margin-bottom: 10px;">Save & Load Projects</h3>
+    <div class="button-group">
+      <button onclick="saveProject()">💾 Save Project</button>
+      <button onclick="document.getElementById('loadProjectInput').click()">📂 Load Project</button>
+      <button onclick="newProject()">➕ New Project</button>
+    </div>
     
-    const startPercent = (effect.start / duration) * 100;
-    const widthPercent = ((effect.end - effect.start) / duration) * 100;
-
-    const block = document.createElement('div');
-    block.style.cssText = `
-      position: absolute;
-      left: ${startPercent}%;
-      width: ${widthPercent}%;
-      height: 60px;
-      background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
-      border: 2px solid #fff;
+    <input 
+      type="file" 
+      id="loadProjectInput" 
+      accept=".json"
+      style="display: none;"
+      onchange="loadProject(event)"
+    >
+    
+    <div id="projectStatus" style="
+      margin-top: 15px;
+      padding: 12px;
+      background: #1a1a2e;
       border-radius: 5px;
-      cursor: pointer;
-      top: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 0.8em;
-      font-weight: 600;
-      z-index: 5;
-    `;
+      color: #9d4edd;
+      font-size: 0.9em;
+      min-height: 30px;
+    "></div>
 
-    block.textContent = `${effect.type} (${effect.start}s-${effect.end}s)`;
-    block.onclick = () => selectEffect(index);
-    container.appendChild(block);
-  });
-}
-
-// Select effect for editing
-function selectEffect(index) {
-  selectedEffectIndex = index;
-  const effect = timelineEffects[index];
-
-  document.getElementById('effectStart').value = effect.start;
-  document.getElementById('effectStartValue').textContent = effect.start + 's';
+    <div style="
+      margin-top: 15px;
+      padding: 12px;
+      background: #3a3a5c;
+      border-left: 3px solid #ff006e;
+      border-radius: 5px;
+      color: #ddd;
+      font-size: 0.85em;
+    ">
+      ℹ️ <strong>Project Files:</strong> Save your editing progress as .json files. 
+      Load them later to continue editing.
+    </div>
+  </div>
+</div>
   
-  document.getElementById('effectEnd').value = effect.end;
-  document.getElementById('effectEndValue').textContent = effect.end + 's';
-  
-  document.getElementById('effectValue').value = effect.value;
-  document.getElementById('effectValueDisplay').textContent = effect.value + 'x';
-
-  console.log('Selected effect:', effect);
-}
-
-// Update effect properties
-document.getElementById('effectStart').addEventListener('input', (e) => {
-  document.getElementById('effectStartValue').textContent = e.target.value + 's';
-});
-
-document.getElementById('effectEnd').addEventListener('input', (e) => {
-  document.getElementById('effectEndValue').textContent = e.target.value + 's';
-});
-
-document.getElementById('effectValue').addEventListener('input', (e) => {
-  document.getElementById('effectValueDisplay').textContent = e.target.value + 'x';
-});
-
-function updateSelectedEffect() {
-  if (selectedEffectIndex === null) {
-    alert('Select an effect first');
-    return;
-  }
-
-  timelineEffects[selectedEffectIndex].start = parseFloat(document.getElementById('effectStart').value);
-  timelineEffects[selectedEffectIndex].end = parseFloat(document.getElementById('effectEnd').value);
-  timelineEffects[selectedEffectIndex].value = parseFloat(document.getElementById('effectValue').value);
-
-  console.log('✅ Effect updated');
-  renderTimeline();
-}
-
-function deleteSelectedEffect() {
-  if (selectedEffectIndex === null) {
-    alert('Select an effect first');
-    return;
-  }
-
-  timelineEffects.splice(selectedEffectIndex, 1);
-  selectedEffectIndex = null;
-  console.log('🗑️ Effect deleted');
-  renderTimeline();
-}
-
-function stopTimeline() {
-  video.pause();
-  isPlayingTimeline = false;
-  if (timelinePlaybackId) {
-    cancelAnimationFrame(timelinePlaybackId);
-  }
-}
-
-function playTimeline() {
-  if (!video.src) {
-    alert('Load a video first');
-    return;
-  }
-
-  if (timelineEffects.length === 0) {
-    alert('Add effects to timeline first');
-    return;
-  }
-
-  if (!gpu) {
-    const offscreen = document.createElement('canvas');
-    offscreen.width = canvas.width;
-    offscreen.height = canvas.height;
-    gpu = new GPUProcessor(offscreen);
-  }
-
-  video.play();
-  isPlayingTimeline = true;
-
-  function renderTimelineFrame() {
-    if (!isPlayingTimeline || video.paused || video.ended) {
-      cancelAnimationFrame(timelinePlaybackId);
-      return;
-    }
-
-    const currentTime = video.currentTime;
-
-    frameCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    let frameData = frameCtx.getImageData(0, 0, canvas.width, canvas.height);
-
-    timelineEffects.forEach(effect => {
-      if (currentTime >= effect.start && currentTime <= effect.end) {
-        try {
-          if (effect.type === 'brightness') {
-            frameData = gpu.brightness(frameData, effect.value);
-          } else if (effect.type === 'grayscale') {
-            frameData = gpu.grayscale(frameData);
-          } else if (effect.type === 'contrast') {
-            frameData = gpu.contrast(frameData, effect.value);
-          } else if (effect.type === 'saturation') {
-            frameData = gpu.saturation(frameData, effect.value);
-          } else if (effect.type === 'exposure') {
-            frameData = gpu.exposure(frameData, effect.value);
-          } else if (effect.type === 'sharpen') {
-            frameData = gpu.sharpen(frameData, effect.value);
-          } else if (effect.type === 'blur') {
-            frameData = gpu.blur(frameData, effect.value);
-          } else if (effect.type === 'vibrance') {
-            frameData = gpu.vibrance(frameData, effect.value);
-          } else if (effect.type === 'temperature') {
-            frameData = gpu.temperature(frameData, effect.value);
-          } else if (effect.type === 'hueShift') {
-            frameData = gpu.hueShift(frameData, effect.value);
-          } else if (effect.type === 'vignette') {
-            frameData = gpu.vignette(frameData, effect.value);
-          } else if (effect.type === 'sepia') {
-            frameData = gpu.sepia(frameData);
-          } else if (effect.type === 'invert') {
-            frameData = gpu.invert(frameData);
-          }
-        } catch (e) {
-          console.warn('Effect error:', e);
-        }
-      }
-    });
-
-    // Display frame
-    ctx.putImageData(frameData, 0, 0);
-
-    // Update playhead
-    const duration = video.duration || 60;
-    const playheadPos = (currentTime / duration) * 100;
-    document.getElementById('playhead').style.left = playheadPos + '%';
-
-    timelinePlaybackId = requestAnimationFrame(renderTimelineFrame);
-  }
-
-  renderTimelineFrame();
-}
-
-function addPresetEffect(presetName) {
-  if (!video.src) {
-    alert('Load a video first');
-    return;
-  }
-
-  const preset = effectPresets[presetName];
-  if (!preset) return;
-
-  // Simply add each effect individually
-  Object.keys(preset).forEach(effectType => {
-    const value = preset[effectType];
-    timelineEffects.push({
-      type: effectType,
-      start: 0,
-      end: 10,
-      value: value,
-      id: Date.now() + Math.random()
-    });
-  });
-
-  console.log('✅ Preset added:', presetName);
-  renderTimeline();
-}
-  </script>
+  </div>
+</div>
 </body>
 </html>
