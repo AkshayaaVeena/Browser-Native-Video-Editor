@@ -8,17 +8,53 @@ body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background: #0f0f1e;
   min-height: 100vh;
-  padding: 30px 20px;
+  padding: 20px;
+}
+
+.main-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
 }
 
 .container {
-  max-width: 800px;
-  margin: 0 auto;
   background: #1a1a2e;
   border-radius: 15px;
-  padding: 30px;
+  padding: 20px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   border: 2px solid #9d4edd;
+}
+
+.preview-container {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  position: sticky;
+  top: 20px;
+  height: fit-content;
+}
+
+.controls-container {
+  grid-column: 2;
+  overflow-y: auto;
+  max-height: calc(100vh - 40px);
+  padding-right: 10px;
+}
+
+.controls-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.controls-container::-webkit-scrollbar-track {
+  background: #0f0f1e;
+}
+
+.controls-container::-webkit-scrollbar-thumb {
+  background: #9d4edd;
+  border-radius: 4px;
 }
 
 h1 {
@@ -27,14 +63,21 @@ h1 {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
   font-size: 2em;
+  grid-column: 1 / -1;
 }
 
 .section {
-  margin-bottom: 25px;
-  padding-bottom: 25px;
+  margin-bottom: 15px;
+  padding-bottom: 15px;
   border-bottom: 2px solid #3a3a5c;
+}
+
+.section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
 }
 
 .section h2 {
@@ -47,13 +90,13 @@ h1 {
 
 h3 {
   color: #ff006e !important;
+  margin-bottom: 10px;
 }
 
 video, canvas {
   width: 100%;
   max-width: 100%;
   border-radius: 10px;
-  margin-bottom: 15px;
   border: 3px solid #9d4edd;
 }
 
@@ -69,10 +112,39 @@ input[type="file"] {
   color: #fff;
 }
 
+input[type="text"],
+input[type="range"],
+input[type="color"] {
+  padding: 8px 10px;
+  border: 2px solid #9d4edd;
+  border-radius: 5px;
+  background: #1a1a2e;
+  color: #fff;
+  font-size: 1em;
+}
+
+input[type="color"] {
+  width: 60px;
+  height: 40px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+input[type="text"] {
+  width: 100%;
+  margin-bottom: 5px;
+}
+
+input[type="range"] {
+  width: 100%;
+  cursor: pointer;
+}
+
 .button-group {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
   margin-bottom: 15px;
 }
 
@@ -80,11 +152,11 @@ button {
   background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
   color: white;
   border: none;
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 0.9em;
+  font-size: 0.85em;
   transition: all 0.3s ease;
   box-shadow: 0 4px 15px rgba(157, 78, 221, 0.4);
 }
@@ -92,6 +164,11 @@ button {
 button:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 25px rgba(255, 0, 110, 0.5);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .info-text {
@@ -103,9 +180,208 @@ button:hover {
 .warning {
   background: #3a3a5c;
   border-left: 4px solid #ff006e;
-  padding: 12px;
+  padding: 10px;
   border-radius: 5px;
   color: #ddd;
   margin-top: 10px;
+  font-size: 0.85em;
+}
+
+.status-div {
+  margin-top: 15px;
+  padding: 10px;
+  background: #1a1a2e;
+  border-radius: 5px;
+  color: #9d4edd;
+  font-size: 0.85em;
+  min-height: 30px;
+}
+
+.section-box {
+  background: #2a2a3e;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+label {
+  color: #aaa;
+  display: block;
+  margin-bottom: 5px;
+  font-size: 0.85em;
+}
+
+#timelineTrack {
+  position: relative;
+  background: #1a1a2e;
+  border: 2px solid #9d4edd;
+  height: 80px;
+  border-radius: 5px;
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+
+#playhead {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: #ff006e;
+  z-index: 10;
+}
+
+#effectBlocks {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+#timelineRuler {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8em;
+  color: #9d4edd;
+  margin-bottom: 10px;
+  padding: 0 10px;
+}
+
+.effect-block {
+  position: absolute;
+  height: 60px;
+  background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
+  border: 2px solid #fff;
+  border-radius: 5px;
+  cursor: grab;
+  top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.8em;
+  font-weight: 600;
+  z-index: 5;
+  user-select: none;
+}
+
+.effect-list,
+#textList,
+#audioList {
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.text-list-container,
+.audio-list-container {
+  background: #2a2a3e;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+  display: none;
+}
+
+.slider-label {
+  color: #9d4edd;
+  font-size: 0.85em;
+}
+
+.zoom-container {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+}
+
+.zoom-container label {
+  margin-bottom: 0;
+}
+
+.zoom-container input {
+  width: 150px;
+}
+
+.zoom-value {
+  color: #9d4edd;
+  min-width: 40px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 15px;
+  border-bottom: 2px solid #3a3a5c;
+}
+
+.tab-btn {
+  padding: 10px 15px;
+  background: transparent;
+  color: #aaa;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
   font-size: 0.9em;
- }
+  border-bottom: 3px solid transparent;
+  transition: all 0.3s ease;
+  box-shadow: none;
+}
+
+.tab-btn:hover {
+  color: #9d4edd;
+  transform: none;
+}
+
+.tab-btn.active {
+  color: #9d4edd;
+  border-bottom-color: #ff006e;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+@media (max-width: 1200px) {
+  .main-container {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-container {
+    grid-column: 1;
+    position: static;
+  }
+
+  .controls-container {
+    grid-column: 1;
+    max-height: none;
+  }
+}
+
+.audio-item,
+.text-item {
+  padding: 8px;
+  margin: 5px 0;
+  background: #1a1a2e;
+  border-left: 3px solid;
+  border-radius: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85em;
+}
+
+.audio-item span,
+.text-item span {
+  color: #aaa;
+  flex: 1;
+}
+
+.audio-item button,
+.text-item button {
+  padding: 4px 8px;
+  font-size: 0.75em;
+}

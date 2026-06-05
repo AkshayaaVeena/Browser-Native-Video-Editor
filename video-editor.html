@@ -1,345 +1,1321 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>🎬 GPU Video Editor</title>
-  <style>
-    * {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: #0f0f1e;
-  min-height: 100vh;
-  padding: 30px 20px;
-}
-
-.container {
-  max-width: 800px;
-  margin: 0 auto;
-  background: #1a1a2e;
-  border-radius: 15px;
-  padding: 30px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  border: 2px solid #9d4edd;
-}
-
-h1 {
-  text-align: center;
-  background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 30px;
-  font-size: 2em;
-}
-
-.section {
-  margin-bottom: 25px;
-  padding-bottom: 25px;
-  border-bottom: 2px solid #3a3a5c;
-}
-
-.section h2 {
-  color: #9d4edd;
-  font-size: 0.95em;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 12px;
-}
-
-h3 {
-  color: #ff006e !important;
-}
-
-video, canvas {
-  width: 100%;
-  max-width: 100%;
-  border-radius: 10px;
-  margin-bottom: 15px;
-  border: 3px solid #9d4edd;
-}
-
-input[type="file"] {
-  display: block;
-  margin-bottom: 15px;
-  padding: 10px;
-  border: 2px dashed #9d4edd;
-  border-radius: 8px;
-  cursor: pointer;
-  width: 100%;
-  background: #2a2a3e;
-  color: #fff;
-}
-
-.button-group {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-  margin-bottom: 15px;
-}
-
-button {
-  background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
-  color: white;
-  border: none;
-  padding: 12px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9em;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(157, 78, 221, 0.4);
-}
-
-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 25px rgba(255, 0, 110, 0.5);
-}
-
-.info-text {
-  color: #aaa;
-  font-size: 0.9em;
-  margin-top: 10px;
-}
-
-.warning {
-  background: #3a3a5c;
-  border-left: 4px solid #ff006e;
-  padding: 12px;
-  border-radius: 5px;
-  color: #ddd;
-  margin-top: 10px;
-  font-size: 0.9em;
- }
-  </style>
-  <script src="GpuProcessor.js"></script>
-  <script src="app.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GPU Video Editor</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="GpuProcessor.js" defer></script>
+  <script src="app.js" defer></script>
+  <script src="magic-cut.js" defer></script>
 </head>
 <body>
-  <div class="container">
-    <h1>🎬 GPU Video Editor</h1>
+  <h1>GPU Video Editor</h1>
 
-    <div class="section">
-      <h2>📁 Load Video</h2>
-      <input type="file" id="videoFile" accept="video/*">
-      <div class="info-text">✓ Supports: MP4, WebM</div>
-    </div>
+  <div class="main-container">
+    <div class="preview-container container">
+      <div class="section">
+        <h2>Load Video</h2>
+        <input type="file" id="videoFile" accept="video/*">
+        <div class="info-text">Supports: MP4, WebM</div>
+      </div>
 
-    <div class="section">
-      <h2>👁️ Preview</h2>
-      <video id="video" controls></video>
-      <canvas id="canvas" width="640" height="360"></canvas>
-    </div>
+      <div class="section">
+        <h2>Preview</h2>
+        <video id="video" controls></video>
+        <canvas id="canvas" width="640" height="360"></canvas>
+      </div>
 
-    <div class="section">
-      <h2>📸 Frame Control</h2>
-      <div class="button-group">
-        <button onclick="extractFrame()">📸 Extract Frame</button>
-        <button onclick="resetFrame()">🔄 Reset</button>
-        <button onclick="exportFrame()">⬇️ Export Frame</button>
+      <div class="section">
+        <h2>Frame Control</h2>
+        <div class="button-group">
+          <button onclick="extractFrame()">Extract Frame</button>
+          <button onclick="resetFrame()">Reset</button>
+          <button onclick="exportFrame()">Export Frame</button>
+        </div>
       </div>
     </div>
 
-    <div class="section">
-      <h2>✨ Effects</h2>
-      
-      <h3 style="color: #333; font-size: 0.9em; margin-top: 15px; margin-bottom: 8px;">Brightness</h3>
-      <div class="button-group">
-        <button onclick="applyBrightness(1.5)">💡 Brighten</button>
-        <button onclick="applyBrightness(0.5)">🌙 Darken</button>
+    <div class="controls-container container">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('effects')">Effects</button>
+        <button class="tab-btn" onclick="switchTab('timeline')">Timeline</button>
+        <button class="tab-btn" onclick="switchTab('text')">Text</button>
+        <button class="tab-btn" onclick="switchTab('audio')">Audio</button>
+        <button class="tab-btn" onclick="switchTab('export')">Export</button>
+        <button class="tab-btn" onclick="switchTab('magiccut')">Magic Cut</button>
+        <button class="tab-btn" onclick="switchTab('project')">Project</button>
       </div>
 
-      <h3 style="color: #333; font-size: 0.9em; margin-top: 15px; margin-bottom: 8px;">Color</h3>
-      <div class="button-group">
-        <button onclick="applyGrayscale()">⚫ Grayscale</button>
-        <button onclick="applySepia()">📷 Sepia</button>
-        <button onclick="applyInvert()">🔄 Invert</button>
+      <div id="effects-tab" class="tab-content active">
+        <div class="section">
+          <h2>Effects</h2>
+
+          <h3 style="color: #333; font-size: 0.9em; margin-top: 0;">Brightness</h3>
+          <div class="button-group">
+            <button onclick="applyBrightness(1.5)">Brighten</button>
+            <button onclick="applyBrightness(0.5)">Darken</button>
+          </div>
+
+          <h3 style="color: #333; font-size: 0.9em;">Color</h3>
+          <div class="button-group">
+            <button onclick="applyGrayscale()">Grayscale</button>
+            <button onclick="applySepia()">Sepia</button>
+            <button onclick="applyInvert()">Invert</button>
+          </div>
+
+          <h3 style="color: #333; font-size: 0.9em;">Adjustment</h3>
+          <div class="button-group">
+            <button onclick="applyContrast(1.5)">Contrast +</button>
+            <button onclick="applyContrast(0.5)">Contrast -</button>
+            <button onclick="applySaturation(1.5)">Saturate +</button>
+            <button onclick="applySaturation(0.5)">Saturate -</button>
+          </div>
+        </div>
       </div>
 
-      <h3 style="color: #333; font-size: 0.9em; margin-top: 15px; margin-bottom: 8px;">Adjustment</h3>
-      <div class="button-group">
-        <button onclick="applyContrast(1.5)">🎨 Contrast +</button>
-        <button onclick="applyContrast(0.5)">🎨 Contrast -</button>
-        <button onclick="applySaturation(1.5)">🌈 Saturate +</button>
-        <button onclick="applySaturation(0.5)">🌈 Saturate -</button>
+      <div id="timeline-tab" class="tab-content">
+        <div class="section">
+          <h2>Timeline</h2>
+
+          <div class="section-box">
+            <h3 style="color: #ff006e; margin-bottom: 10px;">Quick Presets</h3>
+            <div class="button-group">
+              <button onclick="addPresetEffect('cinematic')">Cinematic</button>
+              <button onclick="addPresetEffect('vibrant')">Vibrant</button>
+              <button onclick="addPresetEffect('goldenHour')">Golden Hour</button>
+              <button onclick="addPresetEffect('coolMoody')">Cool Moody</button>
+            </div>
+          </div>
+
+          <div class="section-box">
+            <h3 style="color: #ff006e; margin-bottom: 10px;">Custom Effects</h3>
+            <div class="button-group">
+              <button onclick="addEffectToTimeline('brightness')">Brightness</button>
+              <button onclick="addEffectToTimeline('saturation')">Vibrant</button>
+              <button onclick="addEffectToTimeline('contrast')">Contrast</button>
+              <button onclick="addEffectToTimeline('sharpen')">Detail</button>
+              <button onclick="addEffectToTimeline('blur')">Blur</button>
+            </div>
+          </div>
+
+          <div class="section-box">
+            <h3 style="color: #ff006e; margin-bottom: 10px;">Effect Tracks</h3>
+            <div id="effectTracks" class="effect-list"></div>
+            <button onclick="addEffectTrack()" style="width: 100%; margin-top: 10px;">New Track</button>
+          </div>
+
+          <div id="timelineRuler">
+            <span>0s</span>
+            <span>5s</span>
+            <span>10s</span>
+            <span>15s</span>
+          </div>
+
+          <div id="timelineTrack">
+            <div id="playhead"></div>
+            <div id="effectBlocks"></div>
+          </div>
+
+          <div class="button-group">
+            <button onclick="playTimeline()">Play Timeline</button>
+            <button onclick="stopTimeline()">Stop</button>
+          </div>
+
+          <div class="section-box">
+            <h3 style="color: #ff006e; margin-bottom: 10px; font-size: 0.9em;">Effect Properties</h3>
+            <div style="margin-bottom: 12px;">
+              <label>Start (s)</label>
+              <input type="range" id="effectStart" min="0" max="60" value="0" style="width: 100%;">
+              <span class="slider-label" id="effectStartValue">0s</span>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label>End (s)</label>
+              <input type="range" id="effectEnd" min="0" max="60" value="10" style="width: 100%;">
+              <span class="slider-label" id="effectEndValue">10s</span>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <label>Intensity</label>
+              <input type="range" id="effectValue" min="0.5" max="2" step="0.1" value="1.5" style="width: 100%;">
+              <span class="slider-label" id="effectValueDisplay">1.5x</span>
+            </div>
+
+            <div class="button-group">
+              <button onclick="updateSelectedEffect()">Apply</button>
+              <button onclick="deleteSelectedEffect()">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="text-tab" class="tab-content">
+        <div class="section">
+          <h2>Text Overlays</h2>
+
+          <div style="margin-bottom: 12px;">
+            <label>Text</label>
+            <input type="text" id="textContent" placeholder="Enter text...">
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label>Position</label>
+            <div class="button-group" style="margin-bottom: 0;">
+              <button onclick="setTextPosition('top')" style="padding: 8px;">Top</button>
+              <button onclick="setTextPosition('center')" style="padding: 8px;">Center</button>
+              <button onclick="setTextPosition('bottom')" style="padding: 8px;">Bottom</button>
+            </div>
+            <span class="slider-label" id="textPositionDisplay">Center</span>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label>Color</label>
+            <input type="color" id="textColor" value="#ffffff">
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label>Size</label>
+            <input type="range" id="textSize" min="20" max="100" value="40" style="width: 100%;">
+            <span class="slider-label" id="textSizeDisplay">40px</span>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label>Start (s)</label>
+            <input type="range" id="textStart" min="0" max="60" value="0" style="width: 100%;">
+            <span class="slider-label" id="textStartDisplay">0s</span>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label>Duration (s)</label>
+            <input type="range" id="textDuration" min="1" max="30" value="5" style="width: 100%;">
+            <span class="slider-label" id="textDurationDisplay">5s</span>
+          </div>
+
+          <div class="button-group">
+            <button onclick="addTextOverlay()">Add Text</button>
+            <button onclick="previewText()">Preview</button>
+          </div>
+
+          <div id="textStatus" class="status-div"></div>
+
+          <div id="textListContainer" class="text-list-container">
+            <h3 style="color: #ff006e; margin-bottom: 10px; font-size: 0.9em;">Active Text</h3>
+            <div id="textList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="audio-tab" class="tab-content">
+        <div class="section">
+          <h2>Audio Tracks</h2>
+
+          <div style="margin-bottom: 12px;">
+            <label>Upload Audio</label>
+            <input type="file" id="audioFile" accept="audio/*">
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label>Volume</label>
+            <input type="range" id="audioVolume" min="0" max="1" step="0.1" value="1" style="width: 100%;">
+            <span class="slider-label" id="audioVolumeDisplay">100%</span>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label>Start Time (s)</label>
+            <input type="range" id="audioStart" min="0" max="60" value="0" style="width: 100%;">
+            <span class="slider-label" id="audioStartDisplay">0s</span>
+          </div>
+
+          <div class="button-group">
+            <button onclick="addAudioTrack()">Add Audio</button>
+            <button onclick="previewAudio()">Preview</button>
+          </div>
+
+          <div id="audioStatus" class="status-div"></div>
+
+          <div id="audioListContainer" class="audio-list-container">
+            <h3 style="color: #ff006e; margin-bottom: 10px; font-size: 0.9em;">Active Audio Tracks</h3>
+            <div id="audioList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="export-tab" class="tab-content">
+        <div class="section">
+          <h2>Export Video</h2>
+
+          <p style="color: #aaa; font-size: 0.9em; margin-bottom: 15px;">Download with effects, text & audio.</p>
+
+          <div class="button-group">
+            <button onclick="startExport()" id="exportStartBtn">Start Recording</button>
+            <button onclick="stopExport()" id="exportStopBtn" disabled>Stop & Download</button>
+          </div>
+
+          <div id="exportStatus" class="status-div"></div>
+
+          <div class="warning">
+            Processing time depends on video length. Do not close tab during export.
+          </div>
+        </div>
+      </div>
+
+      <div id="project-tab" class="tab-content">
+        <div class="section">
+          <h2>Project Management</h2>
+
+          <div class="button-group">
+            <button onclick="saveProject()">Save Project</button>
+            <button onclick="document.getElementById('loadProjectInput').click()">Load Project</button>
+            <button onclick="newProject()">New Project</button>
+          </div>
+
+          <input type="file" id="loadProjectInput" accept=".json" style="display: none;" onchange="loadProject(event)">
+
+          <div id="projectStatus" class="status-div"></div>
+
+          <div class="warning">
+            Save editing progress as .json files. Load them later to resume.
+          </div>
+        </div>
       </div>
     </div>
-
-    <div class="section">
-  <h2>📊 Timeline Editor</h2>
-
-  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
-    <h3 style="color: #ff006e; margin-bottom: 10px;">Quick Presets (One-Click)</h3>
-    <div class="button-group">
-      <button onclick="addPresetEffect('cinematic')">🎬 Cinematic</button>
-      <button onclick="addPresetEffect('vibrant')">✨ Vibrant</button>
-      <button onclick="addPresetEffect('goldenHour')">🌅 Golden Hour</button>
-      <button onclick="addPresetEffect('coolMoody')">🌙 Cool Moody</button>
-      <button onclick="addPresetEffect('instagram')">📸 Instagram</button>
-      <button onclick="addPresetEffect('youTube')">📺 YouTube</button>
-    </div>
   </div>
 
-  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
-    <h3 style="color: #ff006e; margin-bottom: 10px;">Custom Effects</h3>
-    <div class="button-group">
-      <button onclick="addEffectToTimeline('brightness')">☀️ Brightness</button>
-      <button onclick="addEffectToTimeline('temperature')">🔥 Warm/Cool</button>
-      <button onclick="addEffectToTimeline('saturation')">🌈 Vibrant</button>
-      <button onclick="addEffectToTimeline('contrast')">🎨 Contrast</button>
-      <button onclick="addEffectToTimeline('sharpen')">🔪 Detail</button>
-      <button onclick="addEffectToTimeline('blur')">💨 Blur</button>
-      <button onclick="addEffectToTimeline('vignette')">🌑 Edges</button>
-    </div>
-  </div>
+  <script>
+    const videoFile = document.getElementById("videoFile");
+    const video = document.getElementById("video");
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
 
-  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px; margin-top: 15px;">
-  <h3 style="color: #ff006e; margin-bottom: 10px;">Effect Tracks</h3>
-  <div id="effectTracks" style="max-height: 300px; overflow-y: auto;"></div>
-  <button onclick="addEffectTrack()" style="margin-top: 10px;">➕ New Track</button>
-</div>
+    const frameCanvas = document.createElement('canvas');
+    const frameCtx = frameCanvas.getContext('2d');
 
-  <div id="timelineRuler" style="display: flex; justify-content: space-between; font-size: 0.8em; color: #9d4edd; margin-bottom: 10px; padding: 0 10px;">
-    <span>0s</span>
-    <span>5s</span>
-    <span>10s</span>
-    <span>15s</span>
-    <span>20s</span>
-  </div>
+    const audioFile = document.getElementById("audioFile");
+    const audioElement = document.createElement('audio');
+    audioElement.crossOrigin = "anonymous";
 
-  <div id="timelineTrack" style="position: relative; background: #1a1a2e; border: 2px solid #9d4edd; height: 80px; border-radius: 5px; overflow-x: auto;">
-    <div id="playhead" style="position: absolute; left: 0; top: 0; width: 2px; height: 100%; background: #ff006e; z-index: 10;"></div>
-    <div id="effectBlocks" style="position: relative; width: 100%; height: 100%;"></div>
-  </div>
+    videoFile.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      video.src = url;
+      console.log('Video loaded:', file.name);
 
-  <div class="button-group" style="margin-top: 15px;">
-    <button onclick="playTimeline()">▶️ Play Timeline</button>
-    <button onclick="stopTimeline()">⏹️ Stop</button>
-  </div>
-</div>
+      video.addEventListener('loadedmetadata', () => {
+        canvas.width = video.videoWidth || canvas.width;
+        canvas.height = video.videoHeight || canvas.height;
+        frameCanvas.width = video.videoWidth;
+        frameCanvas.height = video.videoHeight;
+        console.log('Canvas resized to', canvas.width, 'x', canvas.height);
+      }, { once: true });
+    });
 
- <div style="margin-top: 15px; display: flex; align-items: center; gap: 10px;">
-  <label style="color: #aaa;">Timeline Zoom:</label>
-  <input type="range" id="timelineZoom" min="0.5" max="3" step="0.1" value="1" style="width: 200px;">
-  <span id="zoomValue" style="color: #9d4edd; min-width: 40px;">100%</span>
-</div>
+    audioFile.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      audioElement.src = url;
+      console.log('Audio file selected:', file.name);
+    });
 
-  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px;">
-    <h3 style="color: #ff006e; margin-bottom: 10px;">Effect Properties</h3>
-    
-    <div style="margin-bottom: 15px;">
-      <label style="color: #aaa; display: block; margin-bottom: 5px;">Start Time (seconds)</label>
-      <input type="range" id="effectStart" min="0" max="60" value="0" style="width: 100%;">
-      <span id="effectStartValue" style="color: #9d4edd; font-size: 0.9em;">0s</span>
-    </div>
+    let originalFrame = null;
+    let gpu = null;
 
-    <div style="margin-bottom: 15px;">
-      <label style="color: #aaa; display: block; margin-bottom: 5px;">End Time (seconds)</label>
-      <input type="range" id="effectEnd" min="0" max="60" value="10" style="width: 100%;">
-      <span id="effectEndValue" style="color: #9d4edd; font-size: 0.9em;">10s</span>
-    </div>
+    function extractFrame() {
+      if (!video.src) {
+        alert('Please load a video first');
+        return;
+      }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      originalFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    <div style="margin-bottom: 15px;">
-      <label style="color: #aaa; display: block; margin-bottom: 5px;">Effect Intensity</label>
-      <input type="range" id="effectValue" min="0.5" max="2" step="0.1" value="1.5" style="width: 100%;">
-      <span id="effectValueDisplay" style="color: #9d4edd; font-size: 0.9em;">1.5x</span>
-    </div>
+      if (!gpu) {
+        gpu = new GPUProcessor(document.createElement('canvas'));
+        gpu.canvas.width = canvas.width;
+        gpu.canvas.height = canvas.height;
+        console.log('GPU Processor created');
+      }
+      console.log('Frame extracted at', video.currentTime.toFixed(2), 's');
+    }
 
-    <div class="button-group">
-      <button onclick="updateSelectedEffect()">✅ Apply Changes</button>
-      <button onclick="deleteSelectedEffect()">🗑️ Delete</button>
-    </div>
-  </div>
-</div>
+    function applyBrightness(value) {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const brightFrame = gpu.brightness(originalFrame, value);
+      renderFrame(brightFrame);
+    }
 
-<div class="section">
-  <h2>💾 Export Video</h2>
-  
-  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px;">
-    <h3 style="color: #ff006e; margin-bottom: 10px;">Download Your Video</h3>
-    <div style="margin-bottom: 15px;">
-      <p style="color: #aaa; font-size: 0.9em;">
-        📽️ Your video will be processed with all timeline effects applied.
-      </p>
-    </div>
-    <div class="button-group">
-      <button onclick="startExport()" id="exportStartBtn">🔴 Start Recording</button>
-      <button onclick="stopExport()" id="exportStopBtn" disabled>⏹️ Stop & Download</button>
-    </div>
+    function resetFrame() {
+      if (!originalFrame) { alert('No frame to reset'); return; }
+      renderFrame(originalFrame);
+    }
 
-    <div id="exportStatus" style="
-      margin-top: 15px;
-      padding: 12px;
-      background: #1a1a2e;
-      border-radius: 5px;
-      color: #9d4edd;
-      font-size: 0.9em;
-      min-height: 30px;
-    "></div>
+    function applyGrayscale() {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const grayFrame = gpu.grayscale(originalFrame);
+      renderFrame(grayFrame);
+    }
 
-    <div style="
-      margin-top: 15px;
-      padding: 12px;
-      background: #3a3a5c;
-      border-left: 3px solid #ff006e;
-      border-radius: 5px;
-      color: #ddd;
-      font-size: 0.85em;
-    ">
-      ⚠️ <strong>Note:</strong> Processing time depends on video length. 
-      Do not close the tab during export.
-    </div>
-  </div>
-</div>
+    function applyContrast(value) {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const contrastFrame = gpu.contrast(originalFrame, value);
+      renderFrame(contrastFrame);
+    }
 
-<div class="section">
-  <h2>💾 Project Management</h2>
-  
-  <div style="background: #2a2a3e; border-radius: 8px; padding: 15px;">
-    <h3 style="color: #ff006e; margin-bottom: 10px;">Save & Load Projects</h3>
-    <div class="button-group">
-      <button onclick="saveProject()">💾 Save Project</button>
-      <button onclick="document.getElementById('loadProjectInput').click()">📂 Load Project</button>
-      <button onclick="newProject()">➕ New Project</button>
-    </div>
-    
-    <input 
-      type="file" 
-      id="loadProjectInput" 
-      accept=".json"
-      style="display: none;"
-      onchange="loadProject(event)"
-    >
-    
-    <div id="projectStatus" style="
-      margin-top: 15px;
-      padding: 12px;
-      background: #1a1a2e;
-      border-radius: 5px;
-      color: #9d4edd;
-      font-size: 0.9em;
-      min-height: 30px;
-    "></div>
+    function applyInvert() {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const invertFrame = gpu.invert(originalFrame);
+      renderFrame(invertFrame);
+    }
 
-    <div style="
-      margin-top: 15px;
-      padding: 12px;
-      background: #3a3a5c;
-      border-left: 3px solid #ff006e;
-      border-radius: 5px;
-      color: #ddd;
-      font-size: 0.85em;
-    ">
-      ℹ️ <strong>Project Files:</strong> Save your editing progress as .json files. 
-      Load them later to continue editing.
-    </div>
-  </div>
-</div>
-  
-  </div>
-</div>
+    function applySepia() {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const sepiaFrame = gpu.sepia(originalFrame);
+      renderFrame(sepiaFrame);
+    }
+
+    function applySaturation(value) {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const satFrame = gpu.saturation(originalFrame, value);
+      renderFrame(satFrame);
+    }
+
+    function renderFrame(imageData) {
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    function exportFrame() {
+      if (!originalFrame) { alert('Extract frame first'); return; }
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = originalFrame.width;
+      tempCanvas.height = originalFrame.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.putImageData(originalFrame, 0, 0);
+
+      tempCanvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `frame-${Date.now()}.png`;
+        link.click();
+        URL.revokeObjectURL(url);
+        console.log('Frame exported');
+      }, 'image/png');
+    }
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(tabName + '-tab').classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    let timelineEffects = [];
+    let selectedEffectIndex = null;
+    let isPlayingTimeline = false;
+    let timelinePlaybackId = null;
+    let textOverlays = [];
+    let audioTracks = [];
+    let currentTextPosition = 'center';
+
+    const effectPresets = {
+      cinematic: { contrast: 1.3, saturation: 0.9, temperature: 0.3, exposure: 0.9 },
+      vibrant: { saturation: 1.8, vibrance: 0.5, exposure: 1.1, contrast: 1.2 },
+      goldenHour: { temperature: 0.8, exposure: 1.2, vignette: 0.4, saturation: 1.3 },
+      coolMoody: { temperature: -0.6, exposure: 0.8, contrast: 1.4, vibrance: -0.2 },
+      instagram: { saturation: 1.5, contrast: 1.2, vignette: 0.2, exposure: 1.05 },
+      youTube: { contrast: 1.3, saturation: 1.1, temperature: 0.2, exposure: 1.05 }
+    };
+
+    function addEffectToTimeline(effectType) {
+      if (!video.src) {
+        alert('Load a video first');
+        return;
+      }
+      const effect = {
+        type: effectType,
+        trackId: 1,
+        keyframes: [
+          { time: 0, value: 1.0 },
+          { time: 5, value: 1.5 },
+          { time: 10, value: 1.2 }
+        ],
+        id: Date.now()
+      };
+      timelineEffects.push(effect);
+      console.log('Effect added:', effect);
+      renderTimeline();
+    }
+
+    let effectTracks = [
+      { id: 1, name: 'Track 1', color: '#9d4edd' },
+      { id: 2, name: 'Track 2', color: '#ff006e' }
+    ];
+    let currentTrack = 1;
+
+    function addEffectTrack() {
+      const newId = Math.max(...effectTracks.map(t => t.id)) + 1;
+      const colors = ['#9d4edd', '#ff006e', '#00d9ff', '#ffc300', '#00ff6f'];
+      effectTracks.push({
+        id: newId,
+        name: `Track ${newId}`,
+        color: colors[effectTracks.length % colors.length]
+      });
+      renderEffectTracks();
+    }
+
+    function renderEffectTracks() {
+      const container = document.getElementById('effectTracks');
+      container.innerHTML = '';
+      effectTracks.forEach(track => {
+        const trackDiv = document.createElement('div');
+        trackDiv.style.cssText = `
+          padding: 10px;
+          margin: 5px 0;
+          background: ${track.color}20;
+          border-left: 3px solid ${track.color};
+          border-radius: 5px;
+          cursor: pointer;
+        `;
+        trackDiv.textContent = track.name;
+        trackDiv.onclick = () => {
+          currentTrack = track.id;
+          console.log('Selected track:', track.id);
+        };
+        container.appendChild(trackDiv);
+      });
+    }
+    renderEffectTracks();
+
+    function renderTimeline() {
+      const container = document.getElementById('effectBlocks');
+      const track = document.getElementById('timelineTrack');
+      const duration = video.duration || 60;
+
+      container.innerHTML = '';
+
+      timelineEffects.forEach((effect, index) => {
+        const start = effect.start !== undefined ? effect.start : 0;
+        const end = effect.end !== undefined ? effect.end : 10;
+        const startPercent = (start / duration) * 100;
+        const widthPercent = ((end - start) / duration) * 100;
+
+        const block = document.createElement('div');
+        block.className = 'effect-block';
+        block.style.cssText = `
+          left: ${startPercent}%;
+          width: ${widthPercent}%;
+        `;
+        block.textContent = `${effect.type} (${start.toFixed(1)}s-${end.toFixed(1)}s)`;
+        block.onclick = (e) => {
+          e.stopPropagation();
+          selectEffect(index);
+        };
+
+        let isDragging = false;
+        let dragStart = 0;
+        let dragType = 'move';
+
+        block.addEventListener('mousedown', (e) => {
+          e.stopPropagation();
+          isDragging = true;
+          dragStart = e.clientX;
+
+          const rect = block.getBoundingClientRect();
+          const blockStart = rect.left;
+          const blockEnd = rect.right;
+          const threshold = 10;
+
+          if (Math.abs(e.clientX - blockStart) < threshold) {
+            dragType = 'resizeStart';
+            block.style.cursor = 'ew-resize';
+          } else if (Math.abs(e.clientX - blockEnd) < threshold) {
+            dragType = 'resizeEnd';
+            block.style.cursor = 'ew-resize';
+          } else {
+            dragType = 'move';
+            block.style.cursor = 'grabbing';
+          }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+          if (!isDragging) return;
+
+          const trackRect = track.getBoundingClientRect();
+          const moveDistance = e.clientX - dragStart;
+          const movePercent = (moveDistance / trackRect.width) * 100;
+          const moveSeconds = (movePercent / 100) * duration;
+
+          if (dragType === 'move') {
+            const newStart = Math.max(0, effect.start + moveSeconds);
+            const newEnd = newStart + (effect.end - effect.start);
+            if (newEnd <= duration) {
+              effect.start = newStart;
+              effect.end = newEnd;
+            }
+          } else if (dragType === 'resizeStart') {
+            effect.start = Math.max(0, Math.min(effect.start + moveSeconds, effect.end - 0.5));
+          } else if (dragType === 'resizeEnd') {
+            effect.end = Math.min(duration, Math.max(effect.end + moveSeconds, effect.start + 0.5));
+          }
+
+          dragStart = e.clientX;
+          renderTimeline();
+        });
+
+        document.addEventListener('mouseup', () => {
+          if (isDragging) {
+            isDragging = false;
+            block.style.cursor = 'grab';
+            console.log('Effect moved:', effect);
+          }
+        });
+
+        container.appendChild(block);
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const timelineTrack = document.getElementById('timelineTrack');
+      if (timelineTrack) {
+        timelineTrack.addEventListener('click', (e) => {
+          if (!video.src || isPlayingTimeline) return;
+
+          const rect = e.currentTarget.getBoundingClientRect();
+          const clickX = e.clientX - rect.left;
+          const percent = clickX / rect.width;
+          const duration = video.duration || 60;
+          const newTime = percent * duration;
+
+          video.currentTime = Math.max(0, Math.min(newTime, video.duration));
+          console.log('Seeked to', newTime.toFixed(2), 's');
+        });
+      }
+    });
+
+    function selectEffect(index) {
+      selectedEffectIndex = index;
+      const effect = timelineEffects[index];
+
+      document.getElementById('effectStart').value = effect.start;
+      document.getElementById('effectStartValue').textContent = effect.start + 's';
+
+      document.getElementById('effectEnd').value = effect.end;
+      document.getElementById('effectEndValue').textContent = effect.end + 's';
+
+      document.getElementById('effectValue').value = effect.value;
+      document.getElementById('effectValueDisplay').textContent = effect.value + 'x';
+
+      console.log('Selected effect:', effect);
+    }
+
+    document.getElementById('effectStart').addEventListener('input', (e) => {
+      document.getElementById('effectStartValue').textContent = e.target.value + 's';
+    });
+
+    document.getElementById('effectEnd').addEventListener('input', (e) => {
+      document.getElementById('effectEndValue').textContent = e.target.value + 's';
+    });
+
+    document.getElementById('effectValue').addEventListener('input', (e) => {
+      document.getElementById('effectValueDisplay').textContent = e.target.value + 'x';
+    });
+
+    function updateSelectedEffect() {
+      if (selectedEffectIndex === null) {
+        alert('Select an effect first');
+        return;
+      }
+
+      timelineEffects[selectedEffectIndex].start = parseFloat(document.getElementById('effectStart').value);
+      timelineEffects[selectedEffectIndex].end = parseFloat(document.getElementById('effectEnd').value);
+      timelineEffects[selectedEffectIndex].value = parseFloat(document.getElementById('effectValue').value);
+
+      console.log('Effect updated');
+      renderTimeline();
+    }
+
+    function deleteSelectedEffect() {
+      if (selectedEffectIndex === null) {
+        alert('Select an effect first');
+        return;
+      }
+
+      timelineEffects.splice(selectedEffectIndex, 1);
+      selectedEffectIndex = null;
+      console.log('Effect deleted');
+      renderTimeline();
+    }
+
+    function stopTimeline() {
+      video.pause();
+      audioElement.pause();
+      isPlayingTimeline = false;
+      if (timelinePlaybackId) {
+        cancelAnimationFrame(timelinePlaybackId);
+      }
+    }
+
+    function playTimeline() {
+      if (!video.src) {
+        alert('Load a video first');
+        return;
+      }
+      if (timelineEffects.length === 0) {
+        alert('Add effects to timeline first');
+        return;
+      }
+      if (!gpu) {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = canvas.width;
+        offscreen.height = canvas.height;
+        gpu = new GPUProcessor(offscreen);
+      }
+      video.play();
+      isPlayingTimeline = true;
+
+      if (audioTracks.length > 0 && audioElement.src) {
+        audioElement.currentTime = audioTracks[0].startTime;
+        audioElement.play();
+      }
+
+      function renderTimelineFrame() {
+        if (!isPlayingTimeline || video.paused || video.ended) {
+          cancelAnimationFrame(timelinePlaybackId);
+          return;
+        }
+        const currentTime = video.currentTime;
+        frameCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        let frameData = frameCtx.getImageData(0, 0, canvas.width, canvas.height);
+
+        timelineEffects.forEach(effect => {
+          if (currentTime >= effect.start && currentTime <= effect.end) {
+            try {
+              if (effect.type === 'brightness') {
+                frameData = gpu.brightness(frameData, effect.value);
+              } else if (effect.type === 'grayscale') {
+                frameData = gpu.grayscale(frameData);
+              } else if (effect.type === 'contrast') {
+                frameData = gpu.contrast(frameData, effect.value);
+              } else if (effect.type === 'saturation') {
+                frameData = gpu.saturation(frameData, effect.value);
+              } else if (effect.type === 'sharpen') {
+                frameData = gpu.sharpen(frameData, effect.value);
+              } else if (effect.type === 'blur') {
+                frameData = gpu.blur(frameData, effect.value);
+              }
+            } catch (e) {
+              console.warn('Effect error:', e);
+            }
+          }
+        });
+
+        ctx.putImageData(frameData, 0, 0);
+        renderTextOnCanvas(currentTime);
+
+        const duration = video.duration || 60;
+        const playheadPos = (currentTime / duration) * 100;
+        document.getElementById('playhead').style.left = playheadPos + '%';
+        timelinePlaybackId = requestAnimationFrame(renderTimelineFrame);
+      }
+      renderTimelineFrame();
+    }
+
+    function addPresetEffect(presetName) {
+      if (!video.src) {
+        alert('Load a video first');
+        return;
+      }
+      const preset = effectPresets[presetName];
+      if (!preset) return;
+
+      Object.keys(preset).forEach(effectType => {
+        const value = preset[effectType];
+        timelineEffects.push({
+          type: effectType,
+          start: 0,
+          end: 10,
+          value: value,
+          id: Date.now() + Math.random()
+        });
+      });
+
+      console.log('Preset added:', presetName);
+      renderTimeline();
+    }
+
+    document.getElementById('textSize').addEventListener('input', (e) => {
+      document.getElementById('textSizeDisplay').textContent = e.target.value + 'px';
+    });
+
+    document.getElementById('textStart').addEventListener('input', (e) => {
+      document.getElementById('textStartDisplay').textContent = e.target.value + 's';
+    });
+
+    document.getElementById('textDuration').addEventListener('input', (e) => {
+      document.getElementById('textDurationDisplay').textContent = e.target.value + 's';
+    });
+
+    document.getElementById('audioVolume').addEventListener('input', (e) => {
+      document.getElementById('audioVolumeDisplay').textContent = Math.round(e.target.value * 100) + '%';
+      if (audioTracks.length > 0) {
+        audioTracks[0].volume = parseFloat(e.target.value);
+        audioElement.volume = parseFloat(e.target.value);
+      }
+    });
+
+    document.getElementById('audioStart').addEventListener('input', (e) => {
+      document.getElementById('audioStartDisplay').textContent = e.target.value + 's';
+    });
+
+    function setTextPosition(position) {
+      currentTextPosition = position;
+      document.getElementById('textPositionDisplay').textContent =
+        position.charAt(0).toUpperCase() + position.slice(1);
+    }
+
+    function addTextOverlay() {
+      const content = document.getElementById('textContent').value.trim();
+
+      if (!content) {
+        alert('Enter text first');
+        return;
+      }
+
+      if (!video.src) {
+        alert('Load a video first');
+        return;
+      }
+
+      const textOverlay = {
+        id: Date.now(),
+        content: content,
+        position: currentTextPosition,
+        color: document.getElementById('textColor').value,
+        size: parseInt(document.getElementById('textSize').value),
+        startTime: parseFloat(document.getElementById('textStart').value),
+        duration: parseFloat(document.getElementById('textDuration').value)
+      };
+
+      textOverlays.push(textOverlay);
+
+      updateTextStatus('Text added: "' + content + '"');
+      renderTextList();
+
+      document.getElementById('textContent').value = '';
+
+      console.log('Text overlay added:', textOverlay);
+    }
+
+    function deleteTextOverlay(id) {
+      textOverlays = textOverlays.filter(t => t.id !== id);
+      updateTextStatus('Text removed');
+      renderTextList();
+    }
+
+    function renderTextList() {
+      const container = document.getElementById('textListContainer');
+      const list = document.getElementById('textList');
+
+      if (textOverlays.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = 'block';
+      list.innerHTML = '';
+
+      textOverlays.forEach((text) => {
+        const div = document.createElement('div');
+        div.className = 'text-item';
+        div.style.borderLeftColor = text.color;
+
+        const info = `"${text.content}" (${text.startTime.toFixed(1)}s-${(text.startTime + text.duration).toFixed(1)}s)`;
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = () => deleteTextOverlay(text.id);
+
+        div.innerHTML = `<span>${info}</span>`;
+        div.appendChild(deleteBtn);
+        list.appendChild(div);
+      });
+    }
+
+    function previewText() {
+      if (textOverlays.length === 0) {
+        alert('Add text first');
+        return;
+      }
+
+      updateTextStatus('Playing preview with text');
+      playTimeline();
+    }
+
+    function renderTextOnCanvas(currentTime) {
+      textOverlays.forEach(text => {
+        const endTime = text.startTime + text.duration;
+
+        if (currentTime >= text.startTime && currentTime <= endTime) {
+          drawText(
+            text.content,
+            text.position,
+            text.color,
+            text.size
+          );
+        }
+      });
+    }
+
+    function drawText(text, position, color, size) {
+      ctx.font = `bold ${size}px Arial`;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+
+      const x = canvas.width / 2;
+      let y;
+
+      if (position === 'top') {
+        y = size + 20;
+      } else if (position === 'center') {
+        y = canvas.height / 2;
+      } else if (position === 'bottom') {
+        y = canvas.height - size - 20;
+      }
+
+      ctx.fillText(text, x, y);
+      ctx.shadowColor = 'transparent';
+    }
+
+    function updateTextStatus(message) {
+      const statusDiv = document.getElementById('textStatus');
+      if (statusDiv) {
+        statusDiv.textContent = message;
+      }
+      console.log(message);
+    }
+
+    function addAudioTrack() {
+      if (!audioElement.src) {
+        alert('Select an audio file first');
+        return;
+      }
+
+      const audioTrack = {
+        id: Date.now(),
+        url: audioElement.src,
+        volume: parseFloat(document.getElementById('audioVolume').value),
+        startTime: parseFloat(document.getElementById('audioStart').value)
+      };
+
+      audioTracks = [audioTrack];
+
+      updateAudioStatus('Audio track added');
+      renderAudioList();
+
+      console.log('Audio track added:', audioTrack);
+    }
+
+    function deleteAudioTrack(id) {
+      audioTracks = audioTracks.filter(a => a.id !== id);
+      updateAudioStatus('Audio track removed');
+      renderAudioList();
+    }
+
+    function renderAudioList() {
+      const container = document.getElementById('audioListContainer');
+      const list = document.getElementById('audioList');
+
+      if (audioTracks.length === 0) {
+        container.style.display = 'none';
+        return;
+      }
+
+      container.style.display = 'block';
+      list.innerHTML = '';
+
+      audioTracks.forEach((track) => {
+        const div = document.createElement('div');
+        div.className = 'audio-item';
+        div.style.borderLeftColor = '#00d9ff';
+
+        const info = `Audio (start: ${track.startTime.toFixed(1)}s, vol: ${Math.round(track.volume * 100)}%)`;
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.onclick = () => deleteAudioTrack(track.id);
+
+        div.innerHTML = `<span>${info}</span>`;
+        div.appendChild(deleteBtn);
+        list.appendChild(div);
+      });
+    }
+
+    function previewAudio() {
+      if (audioTracks.length === 0) {
+        alert('Add audio first');
+        return;
+      }
+
+      updateAudioStatus('Playing preview with audio');
+      playTimeline();
+    }
+
+    function updateAudioStatus(message) {
+      const statusDiv = document.getElementById('audioStatus');
+      if (statusDiv) {
+        statusDiv.textContent = message;
+      }
+      console.log(message);
+    }
+
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isExporting = false;
+    let exportStartTime = null;
+
+    function startExport() {
+      if (!video.src) {
+        alert('Load a video first');
+        return;
+      }
+
+      if (timelineEffects.length === 0) {
+        alert('Add effects to timeline first');
+        return;
+      }
+
+      console.log('Export started');
+      recordedChunks = [];
+      isExporting = true;
+      exportStartTime = Date.now();
+
+      if (!gpu) {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = canvas.width;
+        offscreen.height = canvas.height;
+        gpu = new GPUProcessor(offscreen);
+      }
+
+      video.currentTime = 0;
+
+      const stream = canvas.captureStream(30);
+
+      mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm;codecs=vp9',
+        videoBitsPerSecond: 2500000
+      });
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          recordedChunks.push(e.data);
+        }
+      };
+
+      mediaRecorder.start();
+
+      document.getElementById('exportStartBtn').disabled = true;
+      document.getElementById('exportStopBtn').disabled = false;
+
+      updateExportStatus('Recording... Playing video with effects applied');
+
+      playExportTimeline();
+    }
+
+    function stopExport() {
+      if (!mediaRecorder || !isExporting) {
+        alert('Export not in progress');
+        return;
+      }
+
+      console.log('Stopping export');
+      mediaRecorder.stop();
+      isExporting = false;
+
+      mediaRecorder.onstop = () => {
+        const duration = ((Date.now() - exportStartTime) / 1000).toFixed(1);
+        updateExportStatus('Processing complete! (' + duration + 's) Preparing download');
+
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `edited-video-${Date.now()}.webm`;
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        updateExportStatus('Video downloaded! File: ' + link.download);
+        console.log('Export complete! Video downloaded.');
+
+        document.getElementById('exportStartBtn').disabled = false;
+        document.getElementById('exportStopBtn').disabled = true;
+
+        stopTimeline();
+      };
+    }
+
+    function playExportTimeline() {
+      video.play();
+      isPlayingTimeline = true;
+
+      if (audioTracks.length > 0 && audioElement.src) {
+        audioElement.currentTime = audioTracks[0].startTime;
+        audioElement.volume = audioTracks[0].volume;
+        audioElement.play();
+      }
+
+      function renderExportFrame() {
+        if (!isExporting || video.paused) {
+          if (isExporting) {
+            timelinePlaybackId = requestAnimationFrame(renderExportFrame);
+          }
+          return;
+        }
+        if (video.ended) {
+          console.log('Video playback complete');
+          stopTimeline();
+          return;
+        }
+        const currentTime = video.currentTime;
+        const duration = video.duration || 60;
+        frameCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        let frameData = frameCtx.getImageData(0, 0, canvas.width, canvas.height);
+
+        timelineEffects.forEach(effect => {
+          if (currentTime >= effect.start && currentTime <= effect.end) {
+            try {
+              if (effect.type === 'brightness') {
+                frameData = gpu.brightness(frameData, effect.value);
+              } else if (effect.type === 'contrast') {
+                frameData = gpu.contrast(frameData, effect.value);
+              } else if (effect.type === 'saturation') {
+                frameData = gpu.saturation(frameData, effect.value);
+              } else if (effect.type === 'grayscale') {
+                frameData = gpu.grayscale(frameData);
+              }
+            } catch (e) {
+              console.warn('Effect error:', e);
+            }
+          }
+        });
+
+        ctx.putImageData(frameData, 0, 0);
+        renderTextOnCanvas(currentTime);
+
+        const playheadPos = (currentTime / duration) * 100;
+        document.getElementById('playhead').style.left = playheadPos + '%';
+        const percentComplete = ((currentTime / duration) * 100).toFixed(1);
+        updateExportStatus('Recording... ' + percentComplete + '% complete (' + currentTime.toFixed(1) + 's / ' + duration.toFixed(1) + 's)');
+        timelinePlaybackId = requestAnimationFrame(renderExportFrame);
+      }
+      renderExportFrame();
+    }
+
+    function updateExportStatus(message) {
+      const statusDiv = document.getElementById('exportStatus');
+      if (statusDiv) {
+        statusDiv.textContent = message;
+      }
+      console.log(message);
+    }
+
+    function saveProject() {
+      if (!video.src) {
+        alert('Load a video first');
+        return;
+      }
+
+      const videoName = video.src.split('/').pop().split('?')[0] || 'video';
+
+      const project = {
+        version: '1.0',
+        name: 'Project - ' + new Date().toLocaleString(),
+        videoFile: videoName,
+        videoUrl: video.src,
+        canvas: {
+          width: canvas.width,
+          height: canvas.height
+        },
+        effects: timelineEffects.map(effect => ({
+          type: effect.type,
+          start: effect.start,
+          end: effect.end,
+          value: effect.value,
+          id: effect.id
+        })),
+        textOverlays: textOverlays,
+        audioTracks: audioTracks,
+        metadata: {
+          createdAt: new Date().toISOString(),
+          videoDuration: video.duration
+        }
+      };
+
+      const projectJSON = JSON.stringify(project, null, 2);
+
+      const blob = new Blob([projectJSON], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `project-${Date.now()}.json`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      updateProjectStatus('Project saved: ' + link.download);
+      console.log('Project saved!', project);
+    }
+
+    function loadProject(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const project = JSON.parse(e.target.result);
+
+          if (!project.effects || !project.videoUrl) {
+            alert('Invalid project file');
+            return;
+          }
+
+          video.src = project.videoUrl;
+          console.log('Loading video:', project.videoFile);
+
+          video.addEventListener('loadedmetadata', () => {
+            canvas.width = project.canvas.width || video.videoWidth;
+            canvas.height = project.canvas.height || video.videoHeight;
+
+            timelineEffects = project.effects;
+            textOverlays = project.textOverlays || [];
+            audioTracks = project.audioTracks || [];
+            selectedEffectIndex = null;
+
+            renderTimeline();
+            renderTextList();
+            renderAudioList();
+
+            updateProjectStatus('Project loaded: ' + project.effects.length + ' effects restored');
+            console.log('Project loaded!', project);
+          }, { once: true });
+
+        } catch (error) {
+          alert('Error loading project: ' + error.message);
+          console.error('Load error:', error);
+        }
+      };
+
+      reader.readAsText(file);
+    }
+
+    function newProject() {
+      if (confirm('Create new project? (Current progress will be cleared)')) {
+        timelineEffects = [];
+        textOverlays = [];
+        audioTracks = [];
+        selectedEffectIndex = null;
+        video.src = '';
+        audioElement.src = '';
+        video.pause();
+        audioElement.pause();
+        video.currentTime = 0;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        renderTimeline();
+        renderTextList();
+        renderAudioList();
+        updateProjectStatus('New project created');
+        console.log('New project created');
+      }
+    }
+
+    function updateProjectStatus(message) {
+      const statusDiv = document.getElementById('projectStatus');
+      if (statusDiv) {
+        statusDiv.textContent = message;
+      }
+      console.log(message);
+    }
+  </script>
 </body>
 </html>
+
+      <div id="magiccut-tab" class="tab-content">
+        <div class="section">
+          <h2>Magic Cut AI</h2>
+
+          <div class="section-box">
+            <h3 style="color: #ff006e; margin-bottom: 10px;">Auto-Edit Video</h3>
+            <p style="color: #aaa; font-size: 0.9em; margin-bottom: 15px;">AI analyzes your video to find best moments and remove silences.</p>
+
+            <div class="button-group">
+              <button onclick="startMagicCut()">Analyze Video</button>
+              <button onclick="applyMagicCutToTimeline()">Apply Cuts</button>
+            </div>
+
+            <div id="magicCutStatus" class="status-div"></div>
+
+            <div id="magicCutProgress" style="
+              display: none;
+              margin-top: 15px;
+              padding: 12px;
+              background: #1a1a2e;
+              border-radius: 5px;
+            ">
+              <div style="color: #9d4edd; font-size: 0.85em; margin-bottom: 10px;">Progress:</div>
+              <div style="
+                width: 100%;
+                height: 8px;
+                background: #3a3a5c;
+                border-radius: 4px;
+                overflow: hidden;
+              ">
+                <div id="magicCutProgressBar" style="
+                  height: 100%;
+                  width: 0%;
+                  background: linear-gradient(90deg, #9d4edd 0%, #ff006e 100%);
+                  transition: width 0.3s ease;
+                "></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="magicCutResults" class="section-box" style="display: none;">
+            <h3 style="color: #ff006e; margin-bottom: 10px; font-size: 0.9em;">Analysis Results</h3>
+
+            <div style="
+              padding: 10px;
+              background: #1a1a2e;
+              border-radius: 5px;
+              margin-bottom: 12px;
+              font-size: 0.85em;
+              color: #aaa;
+            ">
+              <div style="margin-bottom: 8px;">Moments Detected: <span id="momentCount" style="color: #9d4edd;">0</span></div>
+              <div style="margin-bottom: 8px;">Silences Found: <span id="silenceCount" style="color: #9d4edd;">0</span></div>
+              <div>Suggested Cuts: <span id="cutCount" style="color: #9d4edd;">0</span></div>
+            </div>
+
+            <div id="magicCutMoments" style="max-height: 150px; overflow-y: auto; margin-bottom: 12px;">
+              <div style="color: #aaa; font-size: 0.85em;">Best moments will appear here...</div>
+            </div>
+
+            <div class="button-group">
+              <button onclick="applyMagicCutToTimeline()">Apply All Cuts</button>
+              <button onclick="clearMagicCutAnalysis()">Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
