@@ -13,14 +13,18 @@ class MagicCut {
     const frameInterval = 0.5;
     const duration = this.video.duration || 60;
 
+    // Cache parameters to avoid forcing recalculation checks within the iteration loops
+    const targetWidth = this.canvas.width;
+    const targetHeight = this.canvas.height;
+
     for (let time = 0; time < duration; time += frameInterval) {
       this.video.currentTime = time;
       await new Promise(resolve => {
         this.video.addEventListener('seeked', resolve, { once: true });
       });
 
-      this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
-      const imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.drawImage(this.video, 0, 0, targetWidth, targetHeight);
+      const imageData = this.ctx.getImageData(0, 0, targetWidth, targetHeight);
 
       const score = this.analyzeFrame(imageData);
 
@@ -37,17 +41,22 @@ class MagicCut {
   analyzeFrame(imageData) {
     const data = imageData.data;
     let brightness = 0;
-    let movement = 0;
+    
+    // Performance Optimization: Implementation of a pixel step cadence to avoid main thread evaluation lockups.
+    const pixelStep = 16; 
+    let countedSamples = 0;
 
-    for (let i = 0; i < data.length; i += 4) {
+    for (let i = 0; i < data.length; i += (4 * pixelStep)) {
       const r = data[i];
       const g = data[i + 1];
       const b = data[i + 2];
       brightness += (r + g + b) / 3;
+      countedSamples++;
     }
 
-    brightness = brightness / (data.length / 4);
+    brightness = brightness / countedSamples;
 
+    let movement = 0;
     if (brightness > 50 && brightness < 200) {
       movement = 0.8;
     } else if (brightness > 20 && brightness < 240) {
@@ -61,56 +70,67 @@ class MagicCut {
 
   async detectSilences(threshold = -40) {
     console.log('Detecting silences...');
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
     if (!this.video.src) {
-      console.log('No video loaded');
+      console.log('No video source file found for audio parsing context.');
       return [];
     }
 
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
     try {
       const response = await fetch(this.video.src);
       const arrayBuffer = await response.arrayBuffer();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      const rawData = audioBuffer.getChannelData(0);
+      const sampleRate = audioBuffer.sampleRate;
+      const blockSize = 4096;
+      const minSilenceDuration = 0.5;
+      const detectedSilences = [];
+      let silenceStart = null;
 
-      const silences = this.analyzeSilence(audioBuffer, threshold);
-      this.silences = silences;
+      // Iteration logic avoiding heavy sub-array slice reallocations inside memory loops
+      for (let i = 0; i < rawData.length; i += blockSize) {
+        const endLimit = Math.min(i + blockSize, rawData.length);
+        let sumOfSquares = 0;
+        let count = 0;
 
-      console.log('Detected silences:', silences.length);
-      return silences;
-    } catch (error) {
-      console.warn('Silence detection error:', error);
-      return [];
-    }
-  }
-
-  analyzeSilence(audioBuffer, threshold) {
-    const silences = [];
-    const rawData = audioBuffer.getChannelData(0);
-    const blockSize = 4096;
-    let silenceStart = null;
-
-    for (let i = 0; i < rawData.length; i += blockSize) {
-      const block = rawData.slice(i, i + blockSize);
-      const rms = Math.sqrt(block.reduce((sum, val) => sum + val * val, 0) / block.length);
-      const db = 20 * Math.log10(Math.max(rms, 0.001));
-
-      if (db < threshold) {
-        if (silenceStart === null) {
-          silenceStart = (i / audioBuffer.sampleRate);
+        for (let j = i; j < endLimit; j++) {
+          sumOfSquares += rawData[j] * rawData[j];
+          count++;
         }
-      } else {
-        if (silenceStart !== null) {
-          const silenceEnd = (i / audioBuffer.sampleRate);
-          if (silenceEnd - silenceStart > 0.5) {
-            silences.push({ start: silenceStart, end: silenceEnd, duration: silenceEnd - silenceStart });
+
+        if (count === 0) continue;
+        const rms = Math.sqrt(sumOfSquares / count);
+        const db = 20 * Math.log10(Math.max(rms, 0.0001)); // Bound clamp to prevent -Infinity issues
+        const currentTime = i / sampleRate;
+
+        if (db < threshold) {
+          if (silenceStart === null) {
+            silenceStart = currentTime;
           }
-          silenceStart = null;
+        } else {
+          if (silenceStart !== null) {
+            const silenceDuration = currentTime - silenceStart;
+            if (silenceDuration > minSilenceDuration) {
+              detectedSilences.push({
+                start: silenceStart,
+                end: currentTime,
+                duration: silenceDuration
+              });
+            }
+            silenceStart = null;
+          }
         }
       }
-    }
 
-    return silences;
+      this.silences = detectedSilences;
+      console.log('Detected silences setup complete:', detectedSilences.length);
+      return detectedSilences;
+    } catch (error) {
+      console.error('Audio context processing track exception:', error);
+      return [];
+    }
   }
 
   generateCutPoints() {
@@ -159,16 +179,6 @@ class MagicCut {
     const silences = await this.detectSilences();
     const cutPoints = this.generateCutPoints();
 
-    return {
-      moments,
-      silences,
-      cutPoints,
-      analysis: {
-        totalMoments: moments.length,
-        totalSilences: silences.length,
-        estimatedCuts: cutPoints.length,
-        totalDuration: this.video.duration
-      }
-    };
+    return { moments, silences, cutPoints };
   }
 }

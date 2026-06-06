@@ -15,7 +15,7 @@
     <div class="preview-container container">
       <div class="section">
         <h2>Load Video</h2>
-        <input type="file" id="videoFile" accept="video/*">
+        <input type="file" id="videoFile" accept="video/*" onchange="loadNewVideoAsset(this)">
         <div class="info-text">Supports: MP4, WebM</div>
       </div>
 
@@ -37,12 +37,12 @@
 
     <div class="controls-container container">
       <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('effects')">Effects</button>
-        <button class="tab-btn" onclick="switchTab('timeline')">Timeline & AI</button>
-        <button class="tab-btn" onclick="switchTab('text')">Text</button>
-        <button class="tab-btn" onclick="switchTab('audio')">Audio</button>
-        <button class="tab-btn" onclick="switchTab('export')">Export</button>
-        <button class="tab-btn" onclick="switchTab('project')">Project</button>
+        <button class="tab-btn active" onclick="switchTab('effects', event)">Effects</button>
+        <button class="tab-btn" onclick="switchTab('timeline', event)">Timeline & AI</button>
+        <button class="tab-btn" onclick="switchTab('text', event)">Text</button>
+        <button class="tab-btn" onclick="switchTab('audio', event)">Audio</button>
+        <button class="tab-btn" onclick="switchTab('export', event)">Export</button>
+        <button class="tab-btn" onclick="switchTab('project', event)">Project</button>
       </div>
 
       <div id="effects-tab" class="tab-content active">
@@ -99,14 +99,31 @@
           </div>
 
           <div class="section-box">
-            <h3 style="color: #ff006e; margin-bottom: 10px;">Timeline View</h3>
-            <div id="timelineRuler" style="display: flex; justify-content: space-between; font-size: 0.75em; color: #9d4edd; margin-bottom: 8px; padding: 0 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="color: #ff006e; margin: 0;">Timeline View</h3>
+              <button onclick="executeManualTrackSplit()" style="background: #e63946; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8em;">✂️ Split Track</button>
+            </div>
+            <div id="timelineRuler" style="display: flex; justify-content: space-between; font-size: 0.75em; color: #9d4edd; margin-bottom: 8px; padding: 0 10px 0 65px;">
               <span>0s</span><span>5s</span><span>10s</span><span>15s</span>
             </div>
 
-            <div id="timelineTrack" style="position: relative; background: #1a1a2e; border: 2px solid #9d4edd; height: 100px; border-radius: 5px; overflow-x: auto; margin-bottom: 12px;">
-              <div id="playhead" style="position: absolute; left: 0; top: 0; width: 2px; height: 100%; background: #ff006e; z-index: 10;"></div>
-              <div id="effectBlocks" style="position: relative; width: 100%; height: 100%;"></div>
+            <div id="timelineTrack" style="position: relative; background: #11121a; border: 2px solid #9d4edd; min-height: 120px; border-radius: 5px; display: flex; flex-direction: column; overflow: hidden; cursor: pointer;">
+              <div id="playhead" style="position: absolute; left: 60px; top: 0; width: 2px; height: 100%; background: #ff006e; z-index: 100; pointer-events: none;"></div>
+              
+              <div id="laneText" style="height: 40px; border-bottom: 1px solid #222; position: relative; display: flex; align-items: center; padding-left: 60px;">
+                <span style="position: absolute; left: 5px; font-size: 9px; font-weight: bold; color: #7aa2f7; pointer-events: none;">TEXT</span>
+                <div id="textBlocks" style="position: relative; width: 100%; height: 100%;"></div>
+              </div>
+
+              <div id="laneVideo" style="height: 40px; border-bottom: 1px solid #222; position: relative; display: flex; align-items: center; padding-left: 60px;">
+                <span style="position: absolute; left: 5px; font-size: 9px; font-weight: bold; color: #bb9af7; pointer-events: none;">VIDEO</span>
+                <div id="effectBlocks" style="position: relative; width: 100%; height: 100%;"></div>
+              </div>
+
+              <div id="laneAudio" style="height: 40px; position: relative; display: flex; align-items: center; padding-left: 60px;">
+                <span style="position: absolute; left: 5px; font-size: 9px; font-weight: bold; color: #9ece6a; pointer-events: none;">AUDIO</span>
+                <div id="audioBlocks" style="position: relative; width: 100%; height: 100%;"></div>
+              </div>
             </div>
 
             <div class="button-group">
@@ -264,6 +281,7 @@
   </div>
 
   <script>
+    // System core elements mapping links
     const videoFile = document.getElementById("videoFile");
     const video = document.getElementById("video");
     const canvas = document.getElementById('canvas');
@@ -274,47 +292,7 @@
     const audioElement = document.createElement('audio');
     audioElement.crossOrigin = "anonymous";
 
-    videoFile.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const url = URL.createObjectURL(file);
-      video.src = url;
-      console.log('Video loaded:', file.name);
-      video.addEventListener('loadedmetadata', () => {
-        canvas.width = video.videoWidth || canvas.width;
-        canvas.height = video.videoHeight || canvas.height;
-        frameCanvas.width = video.videoWidth;
-        frameCanvas.height = video.videoHeight;
-      }, { once: true });
-    });
-
-    audioFile.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      audioElement.src = URL.createObjectURL(file);
-      console.log('Audio loaded:', file.name);
-    });
-
-    document.getElementById('textSize').addEventListener('input', (e) => {
-      document.getElementById('textSizeDisplay').textContent = e.target.value + 'px';
-    });
-
-    document.getElementById('textStart').addEventListener('input', (e) => {
-      document.getElementById('textStartDisplay').textContent = e.target.value + 's';
-    });
-
-    document.getElementById('textDuration').addEventListener('input', (e) => {
-      document.getElementById('textDurationDisplay').textContent = e.target.value + 's';
-    });
-
-    document.getElementById('audioVolume').addEventListener('input', (e) => {
-      document.getElementById('audioVolumeDisplay').textContent = Math.round(e.target.value * 100) + '%';
-    });
-
-    document.getElementById('audioStart').addEventListener('input', (e) => {
-      document.getElementById('audioStartDisplay').textContent = e.target.value + 's';
-    });
-
+    // Application Global State Variable parameters
     let originalFrame = null;
     let gpu = null;
     let timelineEffects = [];
@@ -326,6 +304,7 @@
     let currentTextStyle = 'normal';
     let magicCut = null;
     let magicCutAnalysis = null;
+    let currentObjectUrl = null; // Memory retention control tracker
 
     const effectPresets = {
       cinematic: { contrast: 1.3, saturation: 0.9 },
@@ -334,6 +313,67 @@
       coolMoody: { contrast: 1.4, saturation: 0.8 }
     };
 
+    // Safe Memory Allocation Handler for Asset loading
+    function loadNewVideoAsset(inputElement) {
+      const selectedFile = inputElement.files[0];
+      if (!selectedFile) return;
+
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        console.log('Cleared out previously cached local object file allocation pointers.');
+      }
+
+      currentObjectUrl = URL.createObjectURL(selectedFile);
+      video.src = currentObjectUrl;
+      console.log('Video loaded:', selectedFile.name);
+
+      video.addEventListener('loadedmetadata', () => {
+        canvas.width = video.videoWidth || canvas.width;
+        canvas.height = video.videoHeight || canvas.height;
+        frameCanvas.width = video.videoWidth;
+        frameCanvas.height = video.videoHeight;
+        
+        // Dynamically update ruler limits based on real duration
+        const duration = Math.round(video.duration) || 15;
+        const ruler = document.getElementById('timelineRuler');
+        ruler.innerHTML = `<span>0s</span><span>${Math.round(duration/3)}s</span><span>${Math.round(duration*2/3)}s</span><span>${duration}s</span>`;
+      }, { once: true });
+
+      video.addEventListener('loadeddata', () => {
+        if (canvas.width && canvas.height) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          originalFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          console.log('Canvas preview rendered from loaded video frame');
+        }
+      }, { once: true });
+    }
+
+    // Audio Input file registration mapping
+    audioFile.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      audioElement.src = URL.createObjectURL(file);
+      console.log('Audio loaded:', file.name);
+    });
+
+    // Slider Visual Synchronizers UI event links
+    document.getElementById('textSize').addEventListener('input', (e) => {
+      document.getElementById('textSizeDisplay').textContent = e.target.value + 'px';
+    });
+    document.getElementById('textStart').addEventListener('input', (e) => {
+      document.getElementById('textStartDisplay').textContent = e.target.value + 's';
+    });
+    document.getElementById('textDuration').addEventListener('input', (e) => {
+      document.getElementById('textDurationDisplay').textContent = e.target.value + 's';
+    });
+    document.getElementById('audioVolume').addEventListener('input', (e) => {
+      document.getElementById('audioVolumeDisplay').textContent = Math.round(e.target.value * 100) + '%';
+    });
+    document.getElementById('audioStart').addEventListener('input', (e) => {
+      document.getElementById('audioStartDisplay').textContent = e.target.value + 's';
+    });
+
+    // Canvas Frame Core Control Extractions
     function extractFrame() {
       if (!video.src) { alert('Load video'); return; }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -368,18 +408,86 @@
       });
     }
 
-    function switchTab(t) {
+    // Interactive Timeline Drag Navigation/Scrubbing Controller
+    document.getElementById('timelineTrack').addEventListener('click', function(event) {
+      if (!video.src || !video.duration) return;
+
+      const elementBoundingBox = this.getBoundingClientRect();
+      const clickCoordinateX = event.clientX - elementBoundingBox.left - 60; // 60px track offset padding index
+      const trackUsableWidth = elementBoundingBox.width - 60;
+
+      if (clickCoordinateX < 0) return;
+
+      const structuralPercentage = Math.min(Math.max(clickCoordinateX / trackUsableWidth, 0), 1);
+      video.currentTime = structuralPercentage * video.duration;
+      
+      document.getElementById('playhead').style.left = `calc(60px + ${structuralPercentage * 100}%)`;
+    });
+
+    function executeManualTrackSplit() {
+      if (!video.src) return;
+      console.log(`Manual split position committed at timeline time location: ${video.currentTime}s`);
+    }
+
+    function switchTab(t, event) {
       document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(e => e.classList.remove('active'));
       document.getElementById(t + '-tab').classList.add('active');
-      event.target.classList.add('active');
+      if (event && event.currentTarget) {
+        event.currentTarget.classList.add('active');
+      }
+      if (t === 'timeline') {
+        renderTimeline();
+      }
+    }
+
+    // Non-linear Multi-Track rendering layout distributions
+    function renderTimeline() {
+      const videoLane = document.getElementById('effectBlocks');
+      const textLane = document.getElementById('textBlocks');
+      const audioLane = document.getElementById('audioBlocks');
+      const totalDuration = video.duration || 60;
+      
+      videoLane.innerHTML = '';
+      textLane.innerHTML = '';
+      audioLane.innerHTML = '';
+
+      // 1. Draw Video Effects
+      timelineEffects.forEach(e => {
+        const s = e.start || 0;
+        const en = e.end || 10;
+        const b = document.createElement('div');
+        b.style.cssText = `position: absolute; left: ${(s/totalDuration)*100}%; width: ${((en-s)/totalDuration)*100}%; height: 100%; background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%); border: 1px solid #fff; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.7em; cursor: pointer; z-index: 5;`;
+        b.textContent = e.type;
+        b.onclick = (event) => { event.stopPropagation(); deleteEffect(e.id); };
+        videoLane.appendChild(b);
+      });
+
+      // 2. Draw Text Layers on the Text Row Track
+      textOverlays.forEach(t => {
+        const b = document.createElement('div');
+        b.style.cssText = `position: absolute; left: ${(t.start/totalDuration)*100}%; width: ${(t.dur/totalDuration)*100}%; height: 100%; background: #2575fc; border: 1px solid #fff; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.7em; cursor: pointer; z-index: 5; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;`;
+        b.textContent = t.content;
+        b.onclick = (event) => { event.stopPropagation(); deleteTextOverlay(t.id); };
+        textLane.appendChild(b);
+      });
+
+      // 3. Draw Audio Track Segments
+      audioTracks.forEach(a => {
+        const b = document.createElement('div');
+        b.style.cssText = `position: absolute; left: ${(a.start/totalDuration)*100}%; width: 40%; height: 100%; background: #6a11cb; border: 1px solid #fff; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.7em; cursor: pointer; z-index: 5;`;
+        b.textContent = `Audio (${Math.round(a.vol*100)}%)`;
+        b.onclick = (event) => { event.stopPropagation(); deleteAudioTrack(a.id); };
+        audioLane.appendChild(b);
+      });
     }
 
     function addPresetEffect(name) {
       if (!video.src) return;
       const p = effectPresets[name];
+      const duration = video.duration || 10;
       Object.keys(p).forEach(t => {
-        timelineEffects.push({ type: t, start: 0, end: 10, value: p[t], id: Date.now() + Math.random() });
+        timelineEffects.push({ type: t, start: 0, end: duration, value: p[t], id: Date.now() + Math.random() });
       });
       renderTimeline();
       renderEffectsList();
@@ -393,11 +501,13 @@
 
     function deleteTextOverlay(id) {
       textOverlays = textOverlays.filter(t => t.id !== id);
+      renderTimeline();
       renderTextList();
     }
 
     function deleteAudioTrack(id) {
       audioTracks = audioTracks.filter(a => a.id !== id);
+      renderTimeline();
       renderAudioList();
     }
 
@@ -466,24 +576,10 @@
       });
     }
 
-    function renderTimeline() {
-      const c = document.getElementById('effectBlocks');
-      const d = video.duration || 60;
-      c.innerHTML = '';
-      timelineEffects.forEach(e => {
-        const s = e.start || 0;
-        const en = e.end || 10;
-        const b = document.createElement('div');
-        b.style.cssText = `position: absolute; left: ${(s/d)*100}%; width: ${((en-s)/d)*100}%; height: 100%; background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%); border: 1px solid #fff; border-radius: 3px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.7em; cursor: pointer; z-index: 5;`;
-        b.textContent = e.type;
-        b.title = `Click to delete`;
-        b.onclick = () => deleteEffect(e.id);
-        c.appendChild(b);
-      });
-    }
-
+    // Playback loop compositing engine
     function playTimeline() {
       if (!video.src) return;
+      renderTimeline();
       if (!gpu) {
         gpu = new GPUProcessor(document.createElement('canvas'));
         gpu.canvas.width = canvas.width;
@@ -492,8 +588,19 @@
       video.play();
       isPlayingTimeline = true;
 
+      // Handle custom audio playback tracks alignment tracking
+      audioTracks.forEach(track => {
+        setTimeout(() => {
+          if (isPlayingTimeline) {
+            audioElement.volume = track.vol;
+            audioElement.currentTime = 0;
+            audioElement.play().catch(() => console.log("User interaction tracking audio lock."));
+          }
+        }, track.start * 1000);
+      });
+
       function r() {
-        if (!isPlayingTimeline || video.ended) return;
+        if (!isPlayingTimeline || video.ended) { stopTimeline(); return; }
         const ct = video.currentTime;
         frameCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
         let fd = frameCtx.getImageData(0, 0, canvas.width, canvas.height);
@@ -504,11 +611,16 @@
               if (e.type === 'brightness') fd = gpu.brightness(fd, e.value);
               else if (e.type === 'contrast') fd = gpu.contrast(fd, e.value);
               else if (e.type === 'saturation') fd = gpu.saturation(fd, e.value);
+              else if (e.type === 'grayscale') fd = gpu.grayscale(fd);
+              else if (e.type === 'sepia') fd = gpu.sepia(fd);
+              else if (e.type === 'invert') fd = gpu.invert(fd);
             } catch (ex) {}
           }
         });
 
         ctx.putImageData(fd, 0, 0);
+
+        // Render Active Text Overlays onto Canvas view
         textOverlays.forEach(t => {
           if (ct >= t.start && ct <= t.start + t.dur) {
             ctx.font = `${t.style} ${t.sz}px Arial`;
@@ -523,7 +635,7 @@
         });
 
         const d = video.duration || 60;
-        document.getElementById('playhead').style.left = ((ct/d)*100) + '%';
+        document.getElementById('playhead').style.left = `calc(60px + ${(ct/d)*100}%)`;
         timelinePlaybackId = requestAnimationFrame(r);
       }
       r();
@@ -531,6 +643,7 @@
 
     function stopTimeline() {
       video.pause();
+      audioElement.pause();
       isPlayingTimeline = false;
       if (timelinePlaybackId) cancelAnimationFrame(timelinePlaybackId);
     }
@@ -552,6 +665,7 @@
         dur: parseFloat(document.getElementById('textDuration').value)
       });
       document.getElementById('textContent').value = '';
+      renderTimeline();
       renderTextList();
     }
 
@@ -568,6 +682,7 @@
         vol: parseFloat(document.getElementById('audioVolume').value),
         start: parseFloat(document.getElementById('audioStart').value)
       }];
+      renderTimeline();
       renderAudioList();
     }
 
@@ -576,6 +691,7 @@
       playTimeline();
     }
 
+    // AI Processing Integrations
     async function startMagicCut() {
       if (!video.src) return;
       if (!magicCut) magicCut = new MagicCut(video, canvas);
@@ -583,9 +699,9 @@
       try {
         magicCutAnalysis = await magicCut.analyzeFull();
         document.getElementById('magicCutResults').style.display = 'block';
-        document.getElementById('momentCount').textContent = magicCutAnalysis.analysis.totalMoments;
-        document.getElementById('silenceCount').textContent = magicCutAnalysis.analysis.totalSilences;
-        document.getElementById('cutCount').textContent = magicCutAnalysis.analysis.estimatedCuts;
+        document.getElementById('momentCount').textContent = magicCutAnalysis.moments.length;
+        document.getElementById('silenceCount').textContent = magicCutAnalysis.silences.length;
+        document.getElementById('cutCount').textContent = magicCutAnalysis.cutPoints.length;
         document.getElementById('magicCutStatus').textContent = 'Analysis complete!';
       } catch (e) {
         document.getElementById('magicCutStatus').textContent = 'Error: ' + e.message;
@@ -602,14 +718,13 @@
       document.getElementById('magicCutStatus').textContent = magicCutAnalysis.cutPoints.length + ' cuts applied!';
     }
 
+    // Video Canvas Exporter
     let mediaRecorder = null;
     let recordedChunks = [];
-    let isExporting = false;
 
     function startExport() {
       if (!video.src) return;
       recordedChunks = [];
-      isExporting = true;
       video.currentTime = 0;
       const stream = canvas.captureStream(30);
       mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 2500000 });
@@ -617,12 +732,12 @@
       mediaRecorder.start();
       document.getElementById('exportStartBtn').disabled = true;
       document.getElementById('exportStopBtn').disabled = false;
+      document.getElementById('exportStatus').textContent = "Recording project canvas outputs...";
       playTimeline();
     }
 
     function stopExport() {
       mediaRecorder.stop();
-      isExporting = false;
       mediaRecorder.onstop = () => {
         const blob = new Blob(recordedChunks, { type: 'video/webm' });
         const url = URL.createObjectURL(blob);
@@ -632,10 +747,12 @@
         link.click();
         document.getElementById('exportStartBtn').disabled = false;
         document.getElementById('exportStopBtn').disabled = true;
+        document.getElementById('exportStatus').textContent = "Export complete!";
         stopTimeline();
       };
     }
 
+    // JSON Project Importer / Exporters
     function saveProject() {
       if (!video.src) return;
       const p = { video: video.src, effects: timelineEffects, text: textOverlays, audio: audioTracks };
@@ -645,28 +762,31 @@
       link.href = url;
       link.download = `project-${Date.now()}.json`;
       link.click();
+      document.getElementById('projectStatus').textContent = "Project setup saved successfully.";
     }
 
-    function loadProject(e) {
-      const file = e.target.files[0];
+    function loadProject(ev) {
+      const file = ev.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (ev) => {
-        const p = JSON.parse(ev.target.result);
+      reader.onload = (e) => {
+        const p = JSON.parse(e.target.result);
         video.src = p.video;
         timelineEffects = p.effects || [];
         textOverlays = p.text || [];
         audioTracks = p.audio || [];
+        
         renderTimeline();
         renderEffectsList();
         renderTextList();
         renderAudioList();
+        document.getElementById('projectStatus').textContent = "Project parsing complete.";
       };
       reader.readAsText(file);
     }
 
     function newProject() {
-      if (confirm('Clear all?')) {
+      if (confirm('Clear all ongoing timeline configurations?')) {
         video.src = '';
         timelineEffects = [];
         textOverlays = [];
@@ -675,6 +795,7 @@
         renderEffectsList();
         renderTextList();
         renderAudioList();
+        document.getElementById('projectStatus').textContent = "Workspace cleared.";
       }
     }
   </script>
