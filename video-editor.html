@@ -3,14 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GPU Video Editor Pro</title>
+  <title>GPU Video Editor Pro - Multi-Media</title>
   <link rel="stylesheet" href="styles.css">
   <script src="GpuProcessor.js"></script>
   <script src="magic-cut.js"></script>
+  <script src="multi-media.js"></script>
+  <script src="auth-system.js"></script>
 </head>
 <body>
   <div class="header">
-    <h1>🎬 GPU Video Editor Pro</h1>
+    <h1>🎬 GPU Video Editor Pro - Multi-Media Edition</h1>
+    <div class="user-profile" style="display: flex; align-items: center; gap: 15px;">
+      <span id="userGreeting" style="font-size: 0.85em; color: var(--text-secondary); border-right: 1px solid var(--border); padding-right: 15px;">👤 Loading profile...</span>
+      <button onclick="handleLogout()" class="logout-btn" style="
+        background: linear-gradient(135deg, rgba(255, 0, 110, 0.2) 0%, rgba(157, 78, 221, 0.2) 100%);
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 0.8em;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      " onmouseover="this.style.background='linear-gradient(135deg, #ff006e 0%, #9d4edd 100%)'" onmouseout="this.style.background='linear-gradient(135deg, rgba(255, 0, 110, 0.2) 0%, rgba(157, 78, 221, 0.2) 100%)'">
+        🔒 Logout
+      </button>
+    </div>
+  </div>
   </div>
 
   <div class="container-main">
@@ -19,7 +37,7 @@
         <div class="preview-panel">
           <div class="preview-header">📹 Original Video</div>
           <div class="preview-video">
-            <video id="video" style="display: none;"></video>
+            <video id="video"></video>
           </div>
           <div class="preview-controls">
             <button onclick="extractFrame()" style="font-size: 0.75em;">Extract</button>
@@ -29,7 +47,7 @@
         </div>
 
         <div class="preview-panel">
-          <div class="preview-header">✨ Edited Video</div>
+          <div class="preview-header">✨ Edited Output</div>
           <div class="preview-video">
             <canvas id="canvas" width="640" height="360"></canvas>
           </div>
@@ -79,6 +97,11 @@
               <span class="lane-label">AUDIO</span>
               <div class="lane-blocks" id="audioBlocks"></div>
             </div>
+
+            <div class="timeline-lane lane-video">
+              <span class="lane-label">MEDIA</span>
+              <div class="lane-blocks" id="mediaBlocks"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -87,6 +110,7 @@
     <div class="sidebar">
       <div class="sidebar-tabs">
         <button class="sidebar-tab-btn active" onclick="switchTab('import', this)">📁 Import</button>
+        <button class="sidebar-tab-btn" onclick="switchTab('media', this)">🎬 Multi-Media</button>
         <button class="sidebar-tab-btn" onclick="switchTab('color', this)">🎨 Color</button>
         <button class="sidebar-tab-btn" onclick="switchTab('filters', this)">✨ Filters</button>
         <button class="sidebar-tab-btn" onclick="switchTab('text', this)" id="textTabBtn">📝 Text</button>
@@ -96,14 +120,75 @@
         <button class="sidebar-tab-btn" onclick="switchTab('export', this)">💾 Export</button>
       </div>
 
+      <!-- IMPORT TAB -->
       <div id="import-tab" class="sidebar-content active">
         <div class="sidebar-section">
-          <h3>Video File</h3>
+          <h3>📁 Video File</h3>
           <input type="file" id="videoFile" accept="video/*" onchange="loadNewVideoAsset(this)">
           <div class="info-badge">MP4, WebM</div>
         </div>
       </div>
 
+      <!-- MULTI-MEDIA TAB -->
+      <div id="media-tab" class="sidebar-content">
+        <div class="sidebar-section">
+          <h3>📊 Multi-Media Composition</h3>
+          <div class="sidebar-group full">
+            <button onclick="addMediaVideo()">📹 Add Video</button>
+            <button onclick="addMediaImage()">🖼️ Add Image</button>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <label>Media Library</label>
+          <div class="media-library" id="mediaLibrary">
+            <div style="color: #9d4edd; font-size: 0.7em;">No media added yet</div>
+          </div>
+        </div>
+
+        <div id="mediaPropertiesPanel" style="display: none;">
+          <div class="sidebar-section">
+            <h3>📸 Media Properties</h3>
+            <label>Opacity</label>
+            <input type="range" id="mediaOpacity" min="0" max="1" step="0.1" value="1" onchange="updateSelectedMedia('opacity', this.value)">
+            <span class="slider-value" id="mediaOpacityValue">100%</span>
+
+            <label style="margin-top: 8px; display: block;">Scale</label>
+            <input type="range" id="mediaScale" min="0.1" max="2" step="0.1" value="1" onchange="updateSelectedMedia('scale', this.value)">
+            <span class="slider-value" id="mediaScaleValue">1.0x</span>
+
+            <label style="margin-top: 8px; display: block;">Rotation</label>
+            <input type="range" id="mediaRotation" min="0" max="360" step="5" value="0" onchange="updateSelectedMedia('rotation', this.value)">
+            <span class="slider-value" id="mediaRotationValue">0°</span>
+
+            <label style="margin-top: 8px; display: block;">Speed</label>
+            <input type="range" id="mediaSpeed" min="0.5" max="2" step="0.1" value="1" onchange="updateSelectedMedia('speed', this.value)">
+            <span class="slider-value" id="mediaSpeedValue">1.0x</span>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="sidebar-section">
+          <h3>🎬 Composition Mode</h3>
+          <div class="sidebar-group full">
+            <button onclick="setMediaCompositionMode('sequential')" id="btnSequential">▶️ Sequential</button>
+            <button onclick="setMediaCompositionMode('overlay')" id="btnOverlay">🔀 Overlay</button>
+            <button onclick="setMediaCompositionMode('split')" id="btnSplit">📊 Split</button>
+          </div>
+          <div id="mediaCompositionInfo" style="font-size: 0.7em; color: #9d4edd; margin-top: 8px; padding: 8px; background: rgba(157, 78, 221, 0.1); border-radius: 4px;">
+            Mode: Sequential
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="sidebar-section">
+          <button onclick="clearAllMedia()" style="background: rgba(255, 107, 107, 0.5); width: 100%;">🗑️ Clear All</button>
+        </div>
+      </div>
+
+      <!-- COLOR TAB -->
       <div id="color-tab" class="sidebar-content">
         <div class="sidebar-section">
           <h3>Presets</h3>
@@ -205,9 +290,9 @@
 
       <!-- TEXT TAB -->
       <div id="text-tab" class="sidebar-content">
-        <div id="textEditorMode" style="display: none; padding: 8px; background: rgba(255, 0, 110, 0.1); border-radius: 6px; margin-bottom: 10px; font-size: 0.75em; color: #9d4edd;">
+        <div id="textEditorMode" style="display: none; padding: 8px; background: rgba(255, 0, 110, 0.1); border-radius: 6px; margin-bottom: 10px; font-size: 0.75em; color: #ff006e;">
           <strong>Editing:</strong> <span id="editingTextId"></span>
-          <button onclick="cancelTextEdit()" style="float: right; padding: 2px 6px; font-size: 0.65em; background: #e63946;">Cancel</button>
+          <button onclick="cancelTextEdit()" style="float: right; padding: 2px 6px; font-size: 0.65em; background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);">Cancel</button>
         </div>
 
         <div class="sidebar-section">
@@ -258,7 +343,7 @@
 
         <div class="sidebar-group full">
           <button id="addTextBtn" onclick="addTextOverlay()">+ Add</button>
-          <button id="updateTextBtn" onclick="updateTextOverlay()" style="display: none; background: #2563eb;">✓ Update</button>
+          <button id="updateTextBtn" onclick="updateTextOverlay()" style="display: none;">✓ Update</button>
         </div>
 
         <div class="status-message" id="textStatus"></div>
@@ -323,19 +408,19 @@
           <span class="slider-value" id="transitionDurationValue">0.5s</span>
         </div>
 
-        <div class="status-message" id="transitionStatus">🚀 Coming soon...</div>
+        <div class="status-message" id="transitionStatus">✨ Transitions ready</div>
       </div>
 
       <!-- AI TAB -->
       <div id="ai-tab" class="sidebar-content">
         <div class="sidebar-section">
-          <h3>Magic Cut</h3>
+          <h3>Magic Cut AI</h3>
           <div class="sidebar-group full">
             <button onclick="startMagicCut()">Analyze</button>
             <button onclick="applyMagicCutToTimeline()">Apply</button>
           </div>
           <div class="status-message" id="magicCutStatus"></div>
-          <div id="magicCutResults" style="display: none; margin-top: 8px; font-size: 0.75em;">
+          <div id="magicCutResults"  margin-top: 8px; font-size: 0.75em;">
             Moments: <span id="momentCount">0</span> | Cuts: <span id="cutCount">0</span>
           </div>
         </div>
@@ -343,20 +428,7 @@
         <div class="divider"></div>
 
         <div class="sidebar-section">
-          <h3>Google Veo API</h3>
-          <label>API Key</label>
-          <input type="password" id="veoApiKey" placeholder="Enter Google Veo key...">
-          <div class="info-badge" style="font-size: 0.65em;">Get free key at console.cloud.google.com</div>
-        </div>
-
-        <div class="sidebar-section">
-          <h3>Token Management</h3>
-          <label>Daily Token Limit</label>
-          <input type="number" id="tokenLimit" min="100" max="10000" value="1000" placeholder="1000">
-          <span class="slider-value" id="tokenLimitValue">1000 tokens/day</span>
-        </div>
-
-        <div class="sidebar-section">
+          <h3>Token System</h3>
           <label>Tokens Used Today</label>
           <div style="padding: 8px; background: rgba(157, 78, 221, 0.1); border-radius: 6px; font-size: 0.85em;">
             <div><strong><span id="tokensUsed">0</span> / <span id="tokensMax">1000</span></strong></div>
@@ -369,32 +441,7 @@
           </div>
         </div>
 
-        <div class="sidebar-section">
-          <h3>AI Features</h3>
-          
-          <label>Generate Transitions</label>
-          <p style="font-size: 0.7em; color: #666; margin-bottom: 8px;">~50 tokens per transition</p>
-          <div class="sidebar-group full">
-            <button onclick="generateTransitionsVeo('fade')" id="fadeTransBtn">Fade</button>
-            <button onclick="generateTransitionsVeo('zoom')" id="zoomTransBtn">Zoom</button>
-          </div>
-          <div class="sidebar-group full">
-            <button onclick="generateTransitionsVeo('slide')" id="slideTransBtn">Slide</button>
-            <button onclick="generateTransitionsVeo('blur')" id="blurTransBtn">Blur</button>
-          </div>
-
-          <div class="divider"></div>
-
-          <label>Enhance Video</label>
-          <p style="font-size: 0.7em; color: #666; margin-bottom: 8px;">~200 tokens for auto-enhancement</p>
-          <button onclick="enhanceVideoVeo()" id="enhanceVeoBtn" style="width: 100%;">✨ Auto Enhance</button>
-
-          <div class="status-message" id="veoStatus"></div>
-          
-          <div id="tokenWarning" style="display: none; margin-top: 10px; padding: 8px; background: rgba(255, 107, 107, 0.2); border-left: 3px solid #ff6b6b; border-radius: 4px; font-size: 0.75em; color: #ff6b6b;">
-            ⚠️ Insufficient tokens for this operation!
-          </div>
-        </div>
+        <div class="status-message" id="aiStatus">✨ AI features ready</div>
       </div>
 
       <!-- EXPORT TAB -->
@@ -417,6 +464,57 @@
   </div>
 
   <script>
+    // ===== AUTHENTICATION CHECK =====
+    window.addEventListener('load', () => {
+      console.log('🔐 Checking authentication...');
+      
+      if (typeof auth === 'undefined') {
+        console.error('❌ Auth system not loaded');
+        setTimeout(() => {
+          if (typeof auth === 'undefined') {
+            alert('Auth system failed to load');
+            window.location.href = './login.html';
+          }
+        }, 1000);
+        return;
+      }
+      
+      if (!auth.isAuthenticated()) {
+        console.warn('⚠️ Not authenticated, redirecting to login');
+        window.location.href = './login.html';
+      } else {
+        const userData = auth.getUser();
+        // Define both globally/locally so any background script looking for 'user' won't crash
+        window.user = userData; 
+        const user = userData;
+        console.log('✅ User authenticated:', auth.getUser());
+
+        const greetingEl = document.getElementById('userGreeting');
+        if (greetingEl && userData) {
+          // Fallback sequence handles direct properties or nested response objects safely
+          const nameToShow = userData.username || userData.email || 
+                             (userData.user && userData.user.username) || 
+                             (userData.user && userData.user.email) || 'User';
+                             
+          greetingEl.textContent = `👤 ${nameToShow}`;
+        }
+      }
+    });
+
+    // ===== LOGOUT FUNCTIONALITY =====
+    function handleLogout() {
+      if (confirm('Are you sure you want to log out of the session? Any unsaved project configurations will be cleared.')) {
+        // Stop any playing timelines/audio so loops don't hang in the background
+        if (typeof stopTimeline === 'function') stopTimeline();
+        
+        // Use the native instance method to purge JWT/Local Storage tokens
+        auth.logout();
+        
+        console.log('🔒 Session destroyed. Routing back to login window.');
+        window.location.href = './login.html';
+      }
+    }
+
     // ===== STATE =====
     const videoFile = document.getElementById("videoFile");
     const video = document.getElementById("video");
@@ -448,67 +546,15 @@
     let magicCut = null;
     let magicCutAnalysis = null;
 
-    // ===== VEO API TOKEN MANAGEMENT =====
-    let veoTokens = {
-      limit: 1000,
-      used: 0,
-      lastReset: new Date().toDateString()
-    };
+    // Multi-media vars
+    let mediaComposer = null;
+    let mediaItems = [];
+    let selectedMediaId = null;
+    let currentCompositionMode = 'sequential';
 
-    // Load tokens from localStorage
-    function loadTokenData() {
-      const today = new Date().toDateString();
-      const stored = localStorage.getItem('veoTokens');
-      if (stored) {
-        veoTokens = JSON.parse(stored);
-        // Reset if new day
-        if (veoTokens.lastReset !== today) {
-          veoTokens.used = 0;
-          veoTokens.lastReset = today;
-        }
-      }
-      updateTokenDisplay();
-    }
-
-    function saveTokenData() {
-      localStorage.setItem('veoTokens', JSON.stringify(veoTokens));
-    }
-
-    function updateTokenDisplay() {
-      const limit = parseInt(document.getElementById('tokenLimit').value) || 1000;
-      veoTokens.limit = limit;
-      
-      document.getElementById('tokensUsed').textContent = veoTokens.used;
-      document.getElementById('tokensMax').textContent = limit;
-      document.getElementById('tokensRemaining').textContent = Math.max(0, limit - veoTokens.used);
-      
-      const percent = Math.min((veoTokens.used / limit) * 100, 100);
-      document.getElementById('tokenProgressBar').style.width = percent + '%';
-      
-      // Change color based on usage
-      const progressBar = document.getElementById('tokenProgressBar');
-      if (percent > 80) progressBar.style.background = 'linear-gradient(90deg, #ff6b6b 0%, #ff006e 100%)';
-      else if (percent > 50) progressBar.style.background = 'linear-gradient(90deg, #ffa500 0%, #ff006e 100%)';
-      else progressBar.style.background = 'linear-gradient(90deg, #9d4edd 0%, #ff006e 100%)';
-    }
-
-    function consumeTokens(amount) {
-      const limit = parseInt(document.getElementById('tokenLimit').value) || 1000;
-      if (veoTokens.used + amount > limit) {
-        document.getElementById('tokenWarning').style.display = 'block';
-        return false;
-      }
-      veoTokens.used += amount;
-      saveTokenData();
-      updateTokenDisplay();
-      document.getElementById('tokenWarning').style.display = 'none';
-      return true;
-    }
-
-    document.getElementById('tokenLimit').addEventListener('change', updateTokenDisplay);
-
-    // Load tokens on start
-    loadTokenData();
+    // Token management
+    let tokenLimit = 1000;
+    let tokensUsed = 0;
 
     const effectPresets = {
       cinematic: { contrast: 1.3, saturation: 0.9 },
@@ -516,6 +562,13 @@
       goldenHour: { saturation: 1.3, contrast: 1.1 },
       coolMoody: { contrast: 1.4, saturation: 0.8 }
     };
+
+    // ===== INITIALIZATION =====
+    function initMediaComposer() {
+      if (!mediaComposer) {
+        mediaComposer = new MediaComposer(canvas, ctx);
+      }
+    }
 
     // ===== TAB SWITCHING =====
     function switchTab(tabName, button) {
@@ -575,7 +628,7 @@
     });
 
     // ===== SLIDER VALUE UPDATES =====
-    ['brightness', 'contrast', 'saturation', 'exposure', 'temperature', 'vibrance', 'vignette', 'blur', 'sharpen', 'hue', 'textSize', 'textStart', 'textDuration', 'audioVolume', 'audioStart', 'audioFadeIn', 'audioFadeOut', 'transitionDuration'].forEach(id => {
+    ['brightness', 'contrast', 'saturation', 'exposure', 'temperature', 'vibrance', 'vignette', 'blur', 'sharpen', 'hue', 'textSize', 'textStart', 'textDuration', 'audioVolume', 'audioStart', 'audioFadeIn', 'audioFadeOut', 'transitionDuration', 'mediaOpacity', 'mediaScale', 'mediaRotation', 'mediaSpeed'].forEach(id => {
       const slider = document.getElementById(id + 'Slider') || document.getElementById(id);
       if (slider) {
         slider.addEventListener('input', (e) => {
@@ -583,13 +636,13 @@
           let display = document.getElementById(id + 'Value');
           if (id === 'temperature') display.textContent = (value > 0 ? '+' : '') + value;
           else if (id === 'hue') display.textContent = value + '°';
+          else if (id === 'mediaRotation') display.textContent = value + '°';
           else if (id.includes('text') || id.includes('audio') || id === 'transitionDuration') display.textContent = value + (id.includes('Size') ? 'px' : 's');
           else if (id === 'audioVolume') display.textContent = Math.round(value * 100) + '%';
+          else if (id === 'mediaOpacity') display.textContent = Math.round(value * 100) + '%';
+          else if (id === 'mediaScale') display.textContent = value + 'x';
+          else if (id === 'mediaSpeed') display.textContent = value + 'x';
           else display.textContent = value;
-
-          if (video.src && id.startsWith('text')) {
-            video.currentTime = parseFloat(document.getElementById('textStart').value);
-          }
         });
       }
     });
@@ -690,10 +743,12 @@
       const videoLane = document.getElementById('effectBlocks');
       const textLane = document.getElementById('textBlocks');
       const audioLane = document.getElementById('audioBlocks');
+      const mediaLane = document.getElementById('mediaBlocks');
       
       videoLane.innerHTML = '';
       textLane.innerHTML = '';
       audioLane.innerHTML = '';
+      mediaLane.innerHTML = '';
 
       timelineEffects.forEach(e => {
         const width = Math.max((e.end - e.start) * pixelsPerSecond, 20);
@@ -737,11 +792,26 @@
         audioLane.appendChild(b);
       });
 
+      if (mediaComposer && mediaComposer.items) {
+        mediaComposer.items.forEach(m => {
+          const width = Math.max((m.startTime + (m.element.duration || 3)) * pixelsPerSecond, 20);
+          const left = m.startTime * pixelsPerSecond;
+          const b = document.createElement('div');
+          b.className = 'block block-video';
+          b.style.left = left + 'px';
+          b.style.width = width + 'px';
+          b.textContent = m.type === 'video' ? '🎬' : '🖼️';
+          b.style.background = 'linear-gradient(135deg, #06b6d4 0%, #06d6d9 100%)';
+          mediaLane.appendChild(b);
+        });
+      }
+
       const totalDuration = video.duration || 60;
       const totalWidth = totalDuration * pixelsPerSecond;
       document.getElementById('effectBlocks').style.width = totalWidth + 'px';
       document.getElementById('textBlocks').style.width = totalWidth + 'px';
       document.getElementById('audioBlocks').style.width = totalWidth + 'px';
+      document.getElementById('mediaBlocks').style.width = totalWidth + 'px';
     }
 
     function playTimeline() {
@@ -816,6 +886,11 @@
 
         if (!transitionApplied) {
           ctx.putImageData(fd, 0, 0);
+        }
+
+        // Render media composition
+        if (mediaComposer) {
+          mediaComposer.renderFrame(ct);
         }
 
         textOverlays.forEach(t => {
@@ -977,102 +1052,7 @@
         id: Date.now() + Math.random()
       });
       renderTimeline();
-      document.getElementById('transitionStatus').textContent = '✅ ' + type + ' transition added';
-    }
-
-    // ===== VEO API FUNCTIONS =====
-    async function generateTransitionsVeo(type) {
-      const apiKey = document.getElementById('veoApiKey').value;
-      if (!apiKey) {
-        document.getElementById('veoStatus').textContent = '❌ Enter API key first';
-        return;
-      }
-
-      if (!video.src) {
-        document.getElementById('veoStatus').textContent = '❌ Load video first';
-        return;
-      }
-
-      const tokenCost = 50;
-      if (!consumeTokens(tokenCost)) {
-        document.getElementById('veoStatus').textContent = '❌ Insufficient tokens (' + tokenCost + ' needed)';
-        return;
-      }
-
-      document.getElementById('veoStatus').textContent = '⏳ Generating ' + type + ' transition... (-' + tokenCost + ' tokens)';
-      
-      // Disable button during processing
-      const btnId = type === 'fade' ? 'fadeTransBtn' : type === 'zoom' ? 'zoomTransBtn' : type === 'slide' ? 'slideTransBtn' : 'blurTransBtn';
-      document.getElementById(btnId).disabled = true;
-
-      try {
-        // Simulate API call (replace with actual Veo API call)
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        document.getElementById('veoStatus').textContent = '✅ ' + type + ' transition generated! (-' + tokenCost + ' tokens)';
-        console.log('Generated transition:', type);
-        const duration = parseFloat(document.getElementById('transitionDuration').value) || 0.5;
-        const videoDuration = video.duration || 60;
-        const start = Math.min(Math.max(0, video.currentTime), Math.max(0, videoDuration - duration));
-        timelineEffects.push({
-          type: 'transition-' + type,
-          start,
-          end: start + duration,
-          value: duration,
-          id: Date.now() + Math.random()
-        });
-        renderTimeline();
-      } catch (error) {
-        document.getElementById('veoStatus').textContent = '❌ Error: ' + error.message;
-      } finally {
-        document.getElementById(btnId).disabled = false;
-      }
-    }
-
-    async function enhanceVideoVeo() {
-      const apiKey = document.getElementById('veoApiKey').value;
-      if (!apiKey) {
-        document.getElementById('veoStatus').textContent = '❌ Enter API key first';
-        return;
-      }
-
-      if (!video.src) {
-        document.getElementById('veoStatus').textContent = '❌ Load video first';
-        return;
-      }
-
-      const tokenCost = 200;
-      if (!consumeTokens(tokenCost)) {
-        document.getElementById('veoStatus').textContent = '❌ Insufficient tokens (' + tokenCost + ' needed)';
-        return;
-      }
-
-      document.getElementById('veoStatus').textContent = '⏳ Enhancing video... (-' + tokenCost + ' tokens)';
-      document.getElementById('enhanceVeoBtn').disabled = true;
-
-      try {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Apply auto-enhancement (brightness + contrast + saturation)
-        if (gpu && originalFrame) {
-          originalFrame = gpu.brightness(originalFrame, 1.15);
-          originalFrame = gpu.contrast(originalFrame, 1.2);
-          originalFrame = gpu.saturation(originalFrame, 1.15);
-          ctx.putImageData(originalFrame, 0, 0);
-        }
-        
-        document.getElementById('veoStatus').textContent = '✅ Video enhanced! (-' + tokenCost + ' tokens)';
-        
-      } catch (error) {
-        document.getElementById('veoStatus').textContent = '❌ Error: ' + error.message;
-      } finally {
-        document.getElementById('enhanceVeoBtn').disabled = false;
-      }
-    }
-
-    function generateTransitions() {
-      document.getElementById('transitionStatus').textContent = '🚀 Use AI tab for transitions';
+      document.getElementById('transitionStatus').textContent = '✅ ' + type + ' added';
     }
 
     // ===== MAGIC CUT =====
@@ -1100,6 +1080,110 @@
       document.getElementById('magicCutStatus').textContent = '✅ Applied!';
     }
 
+    // ===== MULTI-MEDIA =====
+    function addMediaVideo() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'video/*';
+      input.onchange = async (e) => {
+        initMediaComposer();
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          await mediaComposer.addVideo(file, 0);
+          mediaItems.push({ id: Date.now(), type: 'video', name: file.name });
+          updateMediaLibrary();
+          renderTimeline();
+          document.getElementById('aiStatus').textContent = '✅ Video added to composition';
+        } catch (err) {
+          document.getElementById('aiStatus').textContent = '❌ Error: ' + err.message;
+        }
+      };
+      input.click();
+    }
+
+    function addMediaImage() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async (e) => {
+        initMediaComposer();
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          await mediaComposer.addImage(file, 0, 5);
+          mediaItems.push({ id: Date.now(), type: 'image', name: file.name });
+          updateMediaLibrary();
+          renderTimeline();
+          document.getElementById('aiStatus').textContent = '✅ Image added to composition';
+        } catch (err) {
+          document.getElementById('aiStatus').textContent = '❌ Error: ' + err.message;
+        }
+      };
+      input.click();
+    }
+
+    function updateMediaLibrary() {
+      const lib = document.getElementById('mediaLibrary');
+      if (!mediaComposer || mediaComposer.items.length === 0) {
+        lib.innerHTML = '<div style="color: #9d4edd; font-size: 0.7em;">No media added yet</div>';
+        return;
+      }
+
+      lib.innerHTML = mediaComposer.items.map(item => `
+        <div class="media-item ${selectedMediaId === item.id ? 'selected' : ''}" onclick="selectMedia(this, '${item.id}')">
+          <span>${item.type === 'video' ? '🎬' : '🖼️'} ${item.type.toUpperCase()}</span>
+          <button class="media-item-remove" onclick="removeMedia('${item.id}'); event.stopPropagation();">Remove</button>
+        </div>
+      `).join('');
+    }
+
+    function selectMedia(elem, id) {
+      document.querySelectorAll('.media-item').forEach(e => e.classList.remove('selected'));
+      elem.classList.add('selected');
+      selectedMediaId = id;
+      document.getElementById('mediaPropertiesPanel').style.display = 'block';
+    }
+
+    function updateSelectedMedia(prop, value) {
+      if (!selectedMediaId || !mediaComposer) return;
+      const item = mediaComposer.items.find(m => m.id === selectedMediaId);
+      if (!item) return;
+      
+      const props = {};
+      props[prop] = prop === 'opacity' ? parseFloat(value) : prop === 'scale' ? parseFloat(value) : prop === 'rotation' ? parseFloat(value) : prop === 'speed' ? parseFloat(value) : value;
+      mediaComposer.updateMedia(selectedMediaId, props);
+    }
+
+    function removeMedia(id) {
+      if (!mediaComposer) return;
+      mediaComposer.removeMedia(id);
+      mediaItems = mediaItems.filter(m => m.id !== id);
+      selectedMediaId = null;
+      document.getElementById('mediaPropertiesPanel').style.display = 'none';
+      updateMediaLibrary();
+      renderTimeline();
+    }
+
+    function clearAllMedia() {
+      if (!mediaComposer) return;
+      mediaComposer.clearAll();
+      mediaItems = [];
+      selectedMediaId = null;
+      updateMediaLibrary();
+      renderTimeline();
+    }
+
+    function setMediaCompositionMode(mode) {
+      if (!mediaComposer) return;
+      currentCompositionMode = mode;
+      mediaComposer.renderMode = mode;
+      document.getElementById('btnSequential').style.opacity = mode === 'sequential' ? '1' : '0.5';
+      document.getElementById('btnOverlay').style.opacity = mode === 'overlay' ? '1' : '0.5';
+      document.getElementById('btnSplit').style.opacity = mode === 'split' ? '1' : '0.5';
+      document.getElementById('mediaCompositionInfo').textContent = `Mode: ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
+    }
+
     // ===== EXPORT =====
     let mediaRecorder = null;
     let recordedChunks = [];
@@ -1124,13 +1208,28 @@
         const blob = new Blob(recordedChunks, { type: 'video/webm' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `video-${Date.now()}.webm`;
+        link.download = `composition-${Date.now()}.webm`;
         link.click();
         document.getElementById('exportStartBtn').disabled = false;
         document.getElementById('exportStopBtn').disabled = true;
         document.getElementById('exportStatus').textContent = '✅ Done!';
         stopTimeline();
       };
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      renderTimeline();
+      updateTokenDisplay();
+    });
+
+    function updateTokenDisplay() {
+      const max = parseInt(document.getElementById('tokensMax').textContent) || 1000;
+      tokensUsed = parseInt(document.getElementById('tokensUsed').textContent) || 0;
+      const remaining = max - tokensUsed;
+      document.getElementById('tokensRemaining').textContent = remaining;
+      const percent = Math.min((tokensUsed / max) * 100, 100);
+      document.getElementById('tokenProgressBar').style.width = percent + '%';
     }
   </script>
 </body>

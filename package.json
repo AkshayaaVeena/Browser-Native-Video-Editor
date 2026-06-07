@@ -1,0 +1,26 @@
+{
+  "name": "browser-native-editor",
+  "version": "1.0.0",
+  "main": "main.js",
+  "dependencies": {
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.0",
+    "sqlite3": "^6.0.1"
+  },
+  "scripts": {
+    "start": "node backend-server.js",
+    "dev": "node backend-server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AkshayaaVeena/https---github.com-AkshayaaVeena-Browser-Native-Video-Editor.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AkshayaaVeena/https---github.com-AkshayaaVeena-Browser-Native-Video-Editor/issues"
+  },
+  "homepage": "https://github.com/AkshayaaVeena/https---github.com-AkshayaaVeena-Browser-Native-Video-Editor#readme",
+  "description": ""
+}
