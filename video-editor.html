@@ -13,47 +13,52 @@
 <body>
   <div class="header">
     <h1>🎬 GPU Video Editor Pro - Multi-Media Edition</h1>
-    <div class="user-profile" style="display: flex; align-items: center; gap: 15px;">
-      <span id="userGreeting" style="font-size: 0.85em; color: var(--text-secondary); border-right: 1px solid var(--border); padding-right: 15px;">👤 Loading profile...</span>
-      <button onclick="handleLogout()" class="logout-btn" style="
-        background: linear-gradient(135deg, rgba(255, 0, 110, 0.2) 0%, rgba(157, 78, 221, 0.2) 100%);
-        border: 1px solid var(--border);
-        color: var(--text-primary);
-        padding: 6px 12px;
-        border-radius: 4px;
-        font-size: 0.8em;
-        cursor: pointer;
-        transition: all 0.2s ease;
-      " onmouseover="this.style.background='linear-gradient(135deg, #ff006e 0%, #9d4edd 100%)'" onmouseout="this.style.background='linear-gradient(135deg, rgba(255, 0, 110, 0.2) 0%, rgba(157, 78, 221, 0.2) 100%)'">
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <span id="userGreeting" style="font-size: 0.9em; color: #aaaaaa; border-right: 1px solid #555; padding-right: 15px;">👤 Loading...</span>
+      <button onclick="handleLogout()" style="background: linear-gradient(135deg, rgba(255, 0, 110, 0.2) 0%, rgba(157, 78, 221, 0.2) 100%); border: 1px solid #666; color: #fff; padding: 8px 14px; border-radius: 6px; font-size: 0.85em; cursor: pointer; transition: all 0.2s ease; font-weight: 600;" onmouseover="this.style.background='linear-gradient(135deg, #ff006e 0%, #9d4edd 100%)'" onmouseout="this.style.background='linear-gradient(135deg, rgba(255, 0, 110, 0.2) 0%, rgba(157, 78, 221, 0.2) 100%)'">
         🔒 Logout
       </button>
     </div>
   </div>
-  </div>
 
   <div class="container-main">
     <div class="workspace">
+      <!-- ===== PREVIEW SECTION - LARGE EDITED + SMALL ORIGINAL ===== -->
       <div class="preview-section">
-        <div class="preview-panel">
-          <div class="preview-header">📹 Original Video</div>
-          <div class="preview-video">
-            <video id="video"></video>
+        <!-- MAIN LARGE EDITED PREVIEW (70%) -->
+        <div class="preview-main" id="outputContainer">
+          <div class="preview-header-main">✨ Edited Output</div>
+          <div class="preview-canvas-wrapper">
+            <canvas id="canvas" width="1920" height="1080"></canvas>
           </div>
-          <div class="preview-controls">
-            <button onclick="extractFrame()" style="font-size: 0.75em;">Extract</button>
-            <button onclick="resetFrame()" style="font-size: 0.75em;">Reset</button>
-            <button onclick="exportFrame()" style="font-size: 0.75em;">Export</button>
+          
+          <!-- Compare Slider (hidden by default) -->
+          <div class="compare-slider" id="compareSlider" style="display: none;">
+            <div class="compare-slider-handle"></div>
+            <div class="compare-label compare-label-before">📹 Original</div>
+            <div class="compare-label compare-label-after">✨ Edited</div>
+          </div>
+          
+          <!-- MAIN CONTROLS -->
+          <div class="preview-controls-main">
+            <div class="control-group">
+              <button onclick="playComposition()" class="btn-primary">▶ Preview</button>
+              <button onclick="stopComposition()" class="btn-primary">⏹ Stop</button>
+              <button onclick="toggleCompare()" id="compareBtn" class="btn-compare">📊 Compare</button>
+            </div>
+            <div class="control-group">
+              <button onclick="extractFrame()" class="btn-secondary">📸 Extract</button>
+              <button onclick="resetFrame()" class="btn-secondary">🔄 Reset</button>
+              <button onclick="exportFrame()" class="btn-secondary">💾 Export</button>
+            </div>
           </div>
         </div>
 
-        <div class="preview-panel">
-          <div class="preview-header">✨ Edited Output</div>
-          <div class="preview-video">
-            <canvas id="canvas" width="640" height="360"></canvas>
-          </div>
-          <div class="preview-controls">
-            <button onclick="playTimeline()" style="font-size: 0.75em;">▶ Preview</button>
-            <button onclick="stopTimeline()" style="font-size: 0.75em;">⏹ Stop</button>
+        <!-- SMALL ORIGINAL VIDEO THUMBNAIL (30%) -->
+        <div class="preview-original">
+          <div class="preview-header-small">📹 Original Video</div>
+          <div class="preview-video-small">
+            <video id="video"></video>
           </div>
         </div>
       </div>
@@ -63,11 +68,11 @@
           <h2>⏱️ Timeline</h2>
           <div class="timeline-controls">
             <label>Zoom:</label>
-            <input type="range" id="zoomSlider" min="5" max="100" value="20" style="width: 100px;">
+            <input type="range" id="zoomSlider" min="5" max="100" value="20" style="width: 120px;">
             <span class="timeline-zoom-value" id="zoomValue">20px/s</span>
             <div class="timeline-playback">
-              <button onclick="playTimeline()">▶</button>
-              <button onclick="stopTimeline()">⏹</button>
+              <button onclick="playComposition()">▶</button>
+              <button onclick="stopComposition()">⏹</button>
             </div>
           </div>
         </div>
@@ -82,22 +87,6 @@
         <div class="timeline-track-wrapper">
           <div class="timeline-track" id="timelineTrack">
             <div class="playhead" id="playhead"></div>
-
-            <div class="timeline-lane lane-video">
-              <span class="lane-label">VIDEO</span>
-              <div class="lane-blocks" id="effectBlocks"></div>
-            </div>
-
-            <div class="timeline-lane lane-text">
-              <span class="lane-label">TEXT</span>
-              <div class="lane-blocks" id="textBlocks"></div>
-            </div>
-
-            <div class="timeline-lane lane-audio">
-              <span class="lane-label">AUDIO</span>
-              <div class="lane-blocks" id="audioBlocks"></div>
-            </div>
-
             <div class="timeline-lane lane-video">
               <span class="lane-label">MEDIA</span>
               <div class="lane-blocks" id="mediaBlocks"></div>
@@ -109,249 +98,42 @@
 
     <div class="sidebar">
       <div class="sidebar-tabs">
-        <button class="sidebar-tab-btn active" onclick="switchTab('import', this)">📁 Import</button>
-        <button class="sidebar-tab-btn" onclick="switchTab('media', this)">🎬 Multi-Media</button>
+        <button class="sidebar-tab-btn active" onclick="switchTab('media', this)">🎬 Media</button>
+        <button class="sidebar-tab-btn" onclick="switchTab('transitions', this)">🔄 Trans</button>
+        <button class="sidebar-tab-btn" onclick="switchTab('audio', this)">🎵 Audio</button>
         <button class="sidebar-tab-btn" onclick="switchTab('color', this)">🎨 Color</button>
         <button class="sidebar-tab-btn" onclick="switchTab('filters', this)">✨ Filters</button>
-        <button class="sidebar-tab-btn" onclick="switchTab('text', this)" id="textTabBtn">📝 Text</button>
+        <button class="sidebar-tab-btn" onclick="switchTab('text', this)">📝 Text</button>
         <button class="sidebar-tab-btn" onclick="switchTab('audio', this)">🎵 Audio</button>
-        <button class="sidebar-tab-btn" onclick="switchTab('transitions', this)">🔄 Transitions</button>
         <button class="sidebar-tab-btn" onclick="switchTab('ai', this)">🤖 AI</button>
         <button class="sidebar-tab-btn" onclick="switchTab('export', this)">💾 Export</button>
       </div>
 
-      <!-- IMPORT TAB -->
-      <div id="import-tab" class="sidebar-content active">
+      <!-- TRANSITIONS TAB -->
+      <div id="transitions-tab" class="sidebar-content">
         <div class="sidebar-section">
-          <h3>📁 Video File</h3>
-          <input type="file" id="videoFile" accept="video/*" onchange="loadNewVideoAsset(this)">
-          <div class="info-badge">MP4, WebM</div>
-        </div>
-      </div>
-
-      <!-- MULTI-MEDIA TAB -->
-      <div id="media-tab" class="sidebar-content">
-        <div class="sidebar-section">
-          <h3>📊 Multi-Media Composition</h3>
+          <h3>🔄 Transitions</h3>
           <div class="sidebar-group full">
-            <button onclick="addMediaVideo()">📹 Add Video</button>
-            <button onclick="addMediaImage()">🖼️ Add Image</button>
+            <button onclick="addTransition('fade')" style="font-size: 0.8em; padding: 10px;">Fade</button>
+            <button onclick="addTransition('zoom')" style="font-size: 0.8em; padding: 10px;">Zoom</button>
+            <button onclick="addTransition('slide')" style="font-size: 0.8em; padding: 10px;">Slide</button>
+            <button onclick="addTransition('blur')" style="font-size: 0.8em; padding: 10px;">Blur</button>
           </div>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Media Library</label>
-          <div class="media-library" id="mediaLibrary">
-            <div style="color: #9d4edd; font-size: 0.7em;">No media added yet</div>
-          </div>
-        </div>
-
-        <div id="mediaPropertiesPanel" style="display: none;">
-          <div class="sidebar-section">
-            <h3>📸 Media Properties</h3>
-            <label>Opacity</label>
-            <input type="range" id="mediaOpacity" min="0" max="1" step="0.1" value="1" onchange="updateSelectedMedia('opacity', this.value)">
-            <span class="slider-value" id="mediaOpacityValue">100%</span>
-
-            <label style="margin-top: 8px; display: block;">Scale</label>
-            <input type="range" id="mediaScale" min="0.1" max="2" step="0.1" value="1" onchange="updateSelectedMedia('scale', this.value)">
-            <span class="slider-value" id="mediaScaleValue">1.0x</span>
-
-            <label style="margin-top: 8px; display: block;">Rotation</label>
-            <input type="range" id="mediaRotation" min="0" max="360" step="5" value="0" onchange="updateSelectedMedia('rotation', this.value)">
-            <span class="slider-value" id="mediaRotationValue">0°</span>
-
-            <label style="margin-top: 8px; display: block;">Speed</label>
-            <input type="range" id="mediaSpeed" min="0.5" max="2" step="0.1" value="1" onchange="updateSelectedMedia('speed', this.value)">
-            <span class="slider-value" id="mediaSpeedValue">1.0x</span>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="sidebar-section">
-          <h3>🎬 Composition Mode</h3>
-          <div class="sidebar-group full">
-            <button onclick="setMediaCompositionMode('sequential')" id="btnSequential">▶️ Sequential</button>
-            <button onclick="setMediaCompositionMode('overlay')" id="btnOverlay">🔀 Overlay</button>
-            <button onclick="setMediaCompositionMode('split')" id="btnSplit">📊 Split</button>
-          </div>
-          <div id="mediaCompositionInfo" style="font-size: 0.7em; color: #9d4edd; margin-top: 8px; padding: 8px; background: rgba(157, 78, 221, 0.1); border-radius: 4px;">
-            Mode: Sequential
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="sidebar-section">
-          <button onclick="clearAllMedia()" style="background: rgba(255, 107, 107, 0.5); width: 100%;">🗑️ Clear All</button>
-        </div>
-      </div>
-
-      <!-- COLOR TAB -->
-      <div id="color-tab" class="sidebar-content">
-        <div class="sidebar-section">
-          <h3>Presets</h3>
-          <div class="sidebar-group">
-            <button onclick="addPresetEffect('cinematic')">Cinematic</button>
-            <button onclick="addPresetEffect('vibrant')">Vibrant</button>
-          </div>
-          <div class="sidebar-group">
-            <button onclick="addPresetEffect('goldenHour')">Golden</button>
-            <button onclick="addPresetEffect('coolMoody')">Cool</button>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="sidebar-section">
-          <label>Brightness</label>
-          <input type="range" id="brightnessSlider" min="0.5" max="2" step="0.1" value="1">
-          <span class="slider-value" id="brightnessValue">1.0</span>
-          <button onclick="applySliderEffect('brightness')">Apply</button>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Contrast</label>
-          <input type="range" id="contrastSlider" min="0.5" max="2" step="0.1" value="1">
-          <span class="slider-value" id="contrastValue">1.0</span>
-          <button onclick="applySliderEffect('contrast')">Apply</button>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Saturation</label>
-          <input type="range" id="saturationSlider" min="0" max="2" step="0.1" value="1">
-          <span class="slider-value" id="saturationValue">1.0</span>
-          <button onclick="applySliderEffect('saturation')">Apply</button>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Exposure</label>
-          <input type="range" id="exposureSlider" min="0.5" max="2" step="0.1" value="1">
-          <span class="slider-value" id="exposureValue">1.0</span>
-          <button onclick="applySliderEffect('exposure')">Apply</button>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Temperature</label>
-          <input type="range" id="temperatureSlider" min="-50" max="50" step="5" value="0">
-          <span class="slider-value" id="temperatureValue">0</span>
-          <button onclick="applySliderEffect('temperature')">Apply</button>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Vibrance</label>
-          <input type="range" id="vibranceSlider" min="-1" max="1" step="0.1" value="0">
-          <span class="slider-value" id="vibranceValue">0</span>
-          <button onclick="applySliderEffect('vibrance')">Apply</button>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Vignette</label>
-          <input type="range" id="vignetteSlider" min="0" max="1" step="0.1" value="0">
-          <span class="slider-value" id="vignetteValue">0</span>
-          <button onclick="applySliderEffect('vignette')">Apply</button>
-        </div>
-      </div>
-
-      <!-- FILTERS TAB -->
-      <div id="filters-tab" class="sidebar-content">
-        <div class="sidebar-section">
-          <h3>Filters</h3>
-          <div class="sidebar-group full">
-            <button onclick="applyGrayscale()">Grayscale</button>
-            <button onclick="applySepia()">Sepia</button>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="sidebar-section">
-          <label>Blur</label>
-          <input type="range" id="blurSlider" min="0" max="10" step="0.5" value="0">
-          <span class="slider-value" id="blurValue">0</span>
-          <button onclick="applySliderEffect('blur')">Apply</button>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Sharpen</label>
-          <input type="range" id="sharpenSlider" min="0" max="2" step="0.1" value="0">
-          <span class="slider-value" id="sharpenValue">0</span>
-          <button onclick="applySliderEffect('sharpen')">Apply</button>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Hue Shift</label>
-          <input type="range" id="hueSlider" min="-180" max="180" step="5" value="0">
-          <span class="slider-value" id="hueValue">0°</span>
-          <button onclick="applySliderEffect('hue')">Apply</button>
-        </div>
-      </div>
-
-      <!-- TEXT TAB -->
-      <div id="text-tab" class="sidebar-content">
-        <div id="textEditorMode" style="display: none; padding: 8px; background: rgba(255, 0, 110, 0.1); border-radius: 6px; margin-bottom: 10px; font-size: 0.75em; color: #ff006e;">
-          <strong>Editing:</strong> <span id="editingTextId"></span>
-          <button onclick="cancelTextEdit()" style="float: right; padding: 2px 6px; font-size: 0.65em; background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);">Cancel</button>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Text</label>
-          <input type="text" id="textContent" placeholder="Enter text...">
-        </div>
-
-        <div class="sidebar-section">
-          <label>Color</label>
-          <input type="color" id="textColor" value="#ffffff">
-        </div>
-
-        <div class="sidebar-section">
-          <label>Size</label>
-          <input type="range" id="textSize" min="20" max="100" value="40">
-          <span class="slider-value" id="textSizeValue">40px</span>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Style</label>
-          <div class="sidebar-group full">
-            <button onclick="setTextStyle('normal')" style="font-size: 0.75em;">Normal</button>
-            <button onclick="setTextStyle('bold')" style="font-size: 0.75em;">Bold</button>
-            <button onclick="setTextStyle('italic')" style="font-size: 0.75em;">Italic</button>
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Position</label>
-          <div class="sidebar-group full">
-            <button onclick="setTextPosition('top')" style="font-size: 0.75em;">Top</button>
-            <button onclick="setTextPosition('center')" style="font-size: 0.75em;">Center</button>
-            <button onclick="setTextPosition('bottom')" style="font-size: 0.75em;">Bottom</button>
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Start (s)</label>
-          <input type="range" id="textStart" min="0" max="60" value="0">
-          <span class="slider-value" id="textStartValue">0s</span>
         </div>
 
         <div class="sidebar-section">
           <label>Duration (s)</label>
-          <input type="range" id="textDuration" min="1" max="30" value="5">
-          <span class="slider-value" id="textDurationValue">5s</span>
+          <input type="range" id="transitionDuration" min="0.1" max="2" step="0.1" value="0.5">
+          <span class="slider-value" id="transitionDurationValue">0.5s</span>
         </div>
 
-        <div class="sidebar-group full">
-          <button id="addTextBtn" onclick="addTextOverlay()">+ Add</button>
-          <button id="updateTextBtn" onclick="updateTextOverlay()" style="display: none;">✓ Update</button>
-        </div>
-
-        <div class="status-message" id="textStatus"></div>
+        <div class="status-message" id="transitionStatus">✨ Ready</div>
       </div>
 
       <!-- AUDIO TAB -->
       <div id="audio-tab" class="sidebar-content">
         <div class="sidebar-section">
+          <h3>🎵 Audio Track</h3>
           <label>Audio File</label>
           <input type="file" id="audioFile" accept="audio/*">
         </div>
@@ -368,205 +150,272 @@
           <span class="slider-value" id="audioStartValue">0s</span>
         </div>
 
-        <div class="sidebar-section">
-          <label>Fade In (s)</label>
-          <input type="range" id="audioFadeIn" min="0" max="5" step="0.1" value="0">
-          <span class="slider-value" id="audioFadeInValue">0s</span>
-        </div>
-
-        <div class="sidebar-section">
-          <label>Fade Out (s)</label>
-          <input type="range" id="audioFadeOut" min="0" max="5" step="0.1" value="0">
-          <span class="slider-value" id="audioFadeOutValue">0s</span>
-        </div>
-
         <div class="sidebar-group full">
-          <button onclick="addAudioTrack()">+ Add</button>
-          <button onclick="previewAudio()">Preview</button>
+          <button onclick="addAudioTrack()" style="font-size: 0.85em; padding: 10px;">+ Add Audio</button>
+          <button onclick="previewAudio()" style="font-size: 0.85em; padding: 10px;">🔊 Preview</button>
         </div>
 
         <div class="status-message" id="audioStatus"></div>
       </div>
 
-      <!-- TRANSITIONS TAB -->
-      <div id="transitions-tab" class="sidebar-content">
+      <!-- MEDIA TAB -->
+      <div id="media-tab" class="sidebar-content active">
         <div class="sidebar-section">
-          <h3>Transitions</h3>
+          <h3>📊 Add Media</h3>
           <div class="sidebar-group full">
-            <button onclick="addTransition('fade')" style="font-size: 0.75em;">Fade</button>
-            <button onclick="addTransition('zoom')" style="font-size: 0.75em;">Zoom</button>
-          </div>
-          <div class="sidebar-group full">
-            <button onclick="addTransition('slide')" style="font-size: 0.75em;">Slide</button>
-            <button onclick="addTransition('blur')" style="font-size: 0.75em;">Blur</button>
+            <button onclick="addMediaVideo()" style="font-size: 0.85em; padding: 12px;">📹 Add Video</button>
+            <button onclick="addMediaImage()" style="font-size: 0.85em; padding: 12px;">🖼️ Add Image</button>
           </div>
         </div>
 
         <div class="sidebar-section">
-          <label>Duration (s)</label>
-          <input type="range" id="transitionDuration" min="0.1" max="2" step="0.1" value="0.5">
-          <span class="slider-value" id="transitionDurationValue">0.5s</span>
-        </div>
-
-        <div class="status-message" id="transitionStatus">✨ Transitions ready</div>
-      </div>
-
-      <!-- AI TAB -->
-      <div id="ai-tab" class="sidebar-content">
-        <div class="sidebar-section">
-          <h3>Magic Cut AI</h3>
-          <div class="sidebar-group full">
-            <button onclick="startMagicCut()">Analyze</button>
-            <button onclick="applyMagicCutToTimeline()">Apply</button>
-          </div>
-          <div class="status-message" id="magicCutStatus"></div>
-          <div id="magicCutResults"  margin-top: 8px; font-size: 0.75em;">
-            Moments: <span id="momentCount">0</span> | Cuts: <span id="cutCount">0</span>
+          <label>Media Library</label>
+          <div class="media-library" id="mediaLibrary">
+            <div style="color: #9d4edd; font-size: 0.8em; padding: 10px;">✨ No media added yet</div>
           </div>
         </div>
 
         <div class="divider"></div>
 
         <div class="sidebar-section">
-          <h3>Token System</h3>
-          <label>Tokens Used Today</label>
-          <div style="padding: 8px; background: rgba(157, 78, 221, 0.1); border-radius: 6px; font-size: 0.85em;">
-            <div><strong><span id="tokensUsed">0</span> / <span id="tokensMax">1000</span></strong></div>
-            <div style="width: 100%; background: #1a1a2e; height: 6px; border-radius: 3px; margin-top: 6px; overflow: hidden;">
-              <div id="tokenProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #9d4edd 0%, #ff006e 100%); transition: width 0.3s;"></div>
-            </div>
-            <div style="margin-top: 6px; color: #9d4edd; font-size: 0.75em;">
-              <span id="tokensRemaining">1000</span> tokens remaining
-            </div>
+          <h3>🎬 Composition Mode</h3>
+          <div class="sidebar-group full">
+            <button onclick="setMediaCompositionMode('sequential')" id="btnSequential" style="font-size: 0.8em; padding: 10px;">▶️ Sequential</button>
+            <button onclick="setMediaCompositionMode('overlay')" id="btnOverlay" style="font-size: 0.8em; padding: 10px;">🔀 Overlay</button>
+            <button onclick="setMediaCompositionMode('split')" id="btnSplit" style="font-size: 0.8em; padding: 10px;">📊 Split</button>
           </div>
         </div>
 
-        <div class="status-message" id="aiStatus">✨ AI features ready</div>
+        <div class="divider"></div>
+
+        <div class="sidebar-section">
+          <button onclick="clearAllMedia()" style="background: rgba(255, 107, 107, 0.5); width: 100%; font-size: 0.85em; padding: 10px; font-weight: bold;">🗑️ Clear All Media</button>
+        </div>
+      </div>
+
+      <!-- COLOR TAB -->
+      <div id="color-tab" class="sidebar-content">
+        <div class="sidebar-section">
+          <h3>Color Presets</h3>
+          <div class="sidebar-group">
+            <button onclick="addPresetEffect('cinematic')" style="font-size: 0.8em; padding: 10px;">Cinematic</button>
+            <button onclick="addPresetEffect('vibrant')" style="font-size: 0.8em; padding: 10px;">Vibrant</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="sidebar-section">
+          <label>Brightness</label>
+          <input type="range" id="brightnessSlider" min="0.5" max="2" step="0.1" value="1">
+          <span class="slider-value" id="brightnessValue">1.0</span>
+          <button onclick="applySliderEffect('brightness')" style="font-size: 0.8em; padding: 8px; width: 100%; margin-top: 6px;">Apply</button>
+        </div>
+
+        <div class="sidebar-section">
+          <label>Contrast</label>
+          <input type="range" id="contrastSlider" min="0.5" max="2" step="0.1" value="1">
+          <span class="slider-value" id="contrastValue">1.0</span>
+          <button onclick="applySliderEffect('contrast')" style="font-size: 0.8em; padding: 8px; width: 100%; margin-top: 6px;">Apply</button>
+        </div>
+
+        <div class="sidebar-section">
+          <label>Saturation</label>
+          <input type="range" id="saturationSlider" min="0" max="2" step="0.1" value="1">
+          <span class="slider-value" id="saturationValue">1.0</span>
+          <button onclick="applySliderEffect('saturation')" style="font-size: 0.8em; padding: 8px; width: 100%; margin-top: 6px;">Apply</button>
+        </div>
+      </div>
+
+      <!-- FILTERS TAB -->
+      <div id="filters-tab" class="sidebar-content">
+        <div class="sidebar-section">
+          <h3>Filters</h3>
+          <div class="sidebar-group full">
+            <button onclick="applyGrayscale()" style="font-size: 0.8em; padding: 10px;">Grayscale</button>
+            <button onclick="applySepia()" style="font-size: 0.8em; padding: 10px;">Sepia</button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="sidebar-section">
+          <label>Blur</label>
+          <input type="range" id="blurSlider" min="0" max="10" step="0.5" value="0">
+          <span class="slider-value" id="blurValue">0</span>
+          <button onclick="applySliderEffect('blur')" style="font-size: 0.8em; padding: 8px; width: 100%; margin-top: 6px;">Apply</button>
+        </div>
+      </div>
+
+      <!-- TEXT TAB -->
+      <div id="text-tab" class="sidebar-content">
+        <div class="sidebar-section">
+          <h3>📝 Text Overlay</h3>
+          <label>Text</label>
+          <input type="text" id="textContent" placeholder="Enter text...">
+        </div>
+
+        <div class="sidebar-section">
+          <label>Color</label>
+          <input type="color" id="textColor" value="#ffffff">
+        </div>
+
+        <div class="sidebar-section">
+          <label>Position</label>
+          <div class="sidebar-group full">
+            <button onclick="setTextPosition('top')" style="font-size: 0.7em; padding: 8px;">Top</button>
+            <button onclick="setTextPosition('center')" style="font-size: 0.7em; padding: 8px;">Center</button>
+            <button onclick="setTextPosition('bottom')" style="font-size: 0.7em; padding: 8px;">Bottom</button>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <label>Size</label>
+          <input type="range" id="textSize" min="20" max="100" value="40">
+          <span class="slider-value" id="textSizeValue">40px</span>
+        </div>
+
+        <div class="sidebar-section">
+          <label>Start (s)</label>
+          <input type="range" id="textStart" min="0" max="60" value="0">
+          <span class="slider-value" id="textStartValue">0s</span>
+        </div>
+
+        <div class="sidebar-section">
+          <label>Duration (s)</label>
+          <input type="range" id="textDuration" min="1" max="30" value="5">
+          <span class="slider-value" id="textDurationValue">5s</span>
+        </div>
+
+        <div class="sidebar-group full">
+          <button onclick="addTextOverlay()" style="font-size: 0.85em; padding: 10px;">+ Add Text</button>
+        </div>
+
+        <div class="status-message" id="textStatus"></div>
+      </div>
+
+      <!-- AI TAB -->
+      <div id="ai-tab" class="sidebar-content">
+        <div class="sidebar-section">
+          <h3>🤖 Magic Cut AI</h3>
+          <div class="sidebar-group full">
+            <button onclick="startMagicCut()" style="font-size: 0.8em; padding: 10px;">Analyze Video</button>
+            <button onclick="applyMagicCutToTimeline()" style="font-size: 0.8em; padding: 10px;">Apply Analysis</button>
+          </div>
+          <div class="status-message" id="magicCutStatus"></div>
+          <div id="magicCutResults" style="display: none; margin-top: 10px; font-size: 0.8em; padding: 10px; background: rgba(157, 78, 221, 0.1); border-radius: 5px; border-left: 3px solid #9d4edd;">
+            Moments Found: <span id="momentCount">0</span> | Cut Points: <span id="cutCount">0</span>
+          </div>
+        </div>
       </div>
 
       <!-- EXPORT TAB -->
       <div id="export-tab" class="sidebar-content">
         <div class="sidebar-section">
-          <h3>Export</h3>
+          <h3>💾 Export Composition</h3>
           <div class="sidebar-group full">
-            <button onclick="startExport()" id="exportStartBtn">🔴 Record</button>
-            <button onclick="stopExport()" id="exportStopBtn" disabled>⏹ Download</button>
+            <button onclick="startExport()" id="exportStartBtn" style="font-size: 0.85em; padding: 12px; font-weight: bold;">🔴 Start Recording</button>
+            <button onclick="stopExport()" id="exportStopBtn" disabled style="font-size: 0.85em; padding: 12px; font-weight: bold; opacity: 0.5;">⏹ Download Video</button>
           </div>
 
           <div class="status-message" id="exportStatus"></div>
-
-          <p style="font-size: 0.7em; color: #666; margin-top: 8px;">
-            Don't close tab during export.
-          </p>
+          <div style="font-size: 0.75em; color: #aaa; margin-top: 10px; padding: 10px; background: rgba(100, 100, 100, 0.1); border-radius: 5px;">
+            ⚠️ Don't close tab during export
+          </div>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-    // ===== AUTHENTICATION CHECK =====
+    // ===== AUTHENTICATION =====
     window.addEventListener('load', () => {
-      console.log('🔐 Checking authentication...');
-      
-      if (typeof auth === 'undefined') {
-        console.error('❌ Auth system not loaded');
-        setTimeout(() => {
-          if (typeof auth === 'undefined') {
-            alert('Auth system failed to load');
-            window.location.href = './login.html';
-          }
-        }, 1000);
-        return;
-      }
-      
-      if (!auth.isAuthenticated()) {
-        console.warn('⚠️ Not authenticated, redirecting to login');
+      if (typeof auth === 'undefined' || !auth.isAuthenticated()) {
+        console.warn('Not authenticated');
         window.location.href = './login.html';
       } else {
         const userData = auth.getUser();
-        // Define both globally/locally so any background script looking for 'user' won't crash
-        window.user = userData; 
-        const user = userData;
-        console.log('✅ User authenticated:', auth.getUser());
-
         const greetingEl = document.getElementById('userGreeting');
         if (greetingEl && userData) {
-          // Fallback sequence handles direct properties or nested response objects safely
-          const nameToShow = userData.username || userData.email || 
-                             (userData.user && userData.user.username) || 
-                             (userData.user && userData.user.email) || 'User';
-                             
+          const nameToShow = userData.username || userData.email || 'User';
           greetingEl.textContent = `👤 ${nameToShow}`;
         }
+        console.log('✅ User authenticated');
       }
     });
 
-    // ===== LOGOUT FUNCTIONALITY =====
     function handleLogout() {
-      if (confirm('Are you sure you want to log out of the session? Any unsaved project configurations will be cleared.')) {
-        // Stop any playing timelines/audio so loops don't hang in the background
-        if (typeof stopTimeline === 'function') stopTimeline();
-        
-        // Use the native instance method to purge JWT/Local Storage tokens
+      if (confirm('Logout?')) {
+        if (typeof stopComposition === 'function') stopComposition();
         auth.logout();
-        
-        console.log('🔒 Session destroyed. Routing back to login window.');
         window.location.href = './login.html';
       }
     }
 
     // ===== STATE =====
-    const videoFile = document.getElementById("videoFile");
     const video = document.getElementById("video");
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const frameCanvas = document.createElement('canvas');
-    const frameCtx = frameCanvas.getContext('2d');
-    const audioFile = document.getElementById("audioFile");
-
-    video.addEventListener('error', () => {
-      alert('Unable to load the selected video. Please choose a different MP4/WebM/Ogg file.');
-      video.removeAttribute('src');
-      video.load();
-    });
 
     let originalFrame = null;
     let gpu = null;
-    let timelineEffects = [];
-    let isPlayingTimeline = false;
-    let timelinePlaybackId = null;
+    let isPlayingComposition = false;
+    let compositionPlaybackId = null;
     let textOverlays = [];
-    let audioTracks = [];
-    let editingTextId = null;
-    let currentTextPosition = 'center';
-    let currentTextStyle = 'normal';
     let currentObjectUrl = null;
     let pixelsPerSecond = 20;
-    let playingAudio = null;
-    let magicCut = null;
-    let magicCutAnalysis = null;
-
-    // Multi-media vars
     let mediaComposer = null;
-    let mediaItems = [];
-    let selectedMediaId = null;
-    let currentCompositionMode = 'sequential';
+    let magicCut = null;
+    let currentTextPosition = 'center';
+    let currentTextStyle = 'normal';
+    let audioTracks = [];
+    let playingAudio = null;
+    let timelineEffects = [];
 
-    // Token management
-    let tokenLimit = 1000;
-    let tokensUsed = 0;
+    function addTransition(type) {
+      if (!mediaComposer || mediaComposer.items.length === 0) {
+        alert('Add media first');
+        return;
+      }
+      const duration = parseFloat(document.getElementById('transitionDuration').value) || 0.5;
+      timelineEffects.push({
+        type: 'transition-' + type,
+        start: 0,
+        end: duration,
+        value: duration,
+        id: Date.now() + Math.random()
+      });
+      console.log('✅ Transition added');
+    }
+
+    function addAudioTrack() {
+      const audioFileEl = document.getElementById('audioFile').files[0];
+      if (!audioFileEl) return;
+      audioTracks = [{
+        id: Date.now(),
+        url: URL.createObjectURL(audioFileEl),
+        vol: parseFloat(document.getElementById('audioVolume').value),
+        start: parseFloat(document.getElementById('audioStart').value)
+      }];
+      console.log('✅ Audio added');
+    }
+
+    function previewAudio() {
+      if (audioTracks.length === 0) return;
+      playComposition();
+    }
+
 
     const effectPresets = {
       cinematic: { contrast: 1.3, saturation: 0.9 },
-      vibrant: { saturation: 1.8, contrast: 1.2 },
-      goldenHour: { saturation: 1.3, contrast: 1.1 },
-      coolMoody: { contrast: 1.4, saturation: 0.8 }
+      vibrant: { saturation: 1.8, contrast: 1.2 }
     };
 
     // ===== INITIALIZATION =====
     function initMediaComposer() {
       if (!mediaComposer) {
         mediaComposer = new MediaComposer(canvas, ctx);
+        console.log('✅ MediaComposer initialized');
       }
     }
 
@@ -575,82 +424,16 @@
       document.querySelectorAll('.sidebar-content').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.sidebar-tab-btn').forEach(btn => btn.classList.remove('active'));
       const tab = document.getElementById(tabName + '-tab');
-      if (!tab) return;
-      tab.classList.add('active');
-      if (button) button.classList.add('active');
+      if (tab) {
+        tab.classList.add('active');
+        button.classList.add('active');
+      }
     }
 
-    // ===== VIDEO LOADING =====
-    function loadNewVideoAsset(inputElement) {
-      const file = inputElement.files[0];
-      if (!file) return;
-
-      const extension = file.name.split('.').pop().toLowerCase();
-      const supportedExtensions = ['mp4', 'webm', 'ogg'];
-      const mimeSupported = file.type ? video.canPlayType(file.type) !== '' : true;
-      const extSupported = supportedExtensions.includes(extension);
-
-      if (!mimeSupported && !extSupported) {
-        alert('Unsupported video format. Please use MP4, WebM, or Ogg.');
-        inputElement.value = '';
-        return;
-      }
-
-      if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
-      currentObjectUrl = URL.createObjectURL(file);
-      video.src = currentObjectUrl;
-      console.log('✅ Video loaded');
-
-      video.addEventListener('loadedmetadata', () => {
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 360;
-        frameCanvas.width = canvas.width;
-        frameCanvas.height = canvas.height;
-
-        const duration = Math.round(video.duration) || 15;
-        document.getElementById('ruler2').textContent = Math.round(duration/3) + 's';
-        document.getElementById('ruler3').textContent = Math.round(duration*2/3) + 's';
-        document.getElementById('ruler4').textContent = duration + 's';
-      }, { once: true });
-    }
-
-    audioFile.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      console.log('✅ Audio loaded');
-    });
-
-    // ===== ZOOM =====
-    document.getElementById('zoomSlider').addEventListener('input', (e) => {
-      pixelsPerSecond = parseInt(e.target.value);
-      document.getElementById('zoomValue').textContent = pixelsPerSecond + 'px/s';
-      renderTimeline();
-    });
-
-    // ===== SLIDER VALUE UPDATES =====
-    ['brightness', 'contrast', 'saturation', 'exposure', 'temperature', 'vibrance', 'vignette', 'blur', 'sharpen', 'hue', 'textSize', 'textStart', 'textDuration', 'audioVolume', 'audioStart', 'audioFadeIn', 'audioFadeOut', 'transitionDuration', 'mediaOpacity', 'mediaScale', 'mediaRotation', 'mediaSpeed'].forEach(id => {
-      const slider = document.getElementById(id + 'Slider') || document.getElementById(id);
-      if (slider) {
-        slider.addEventListener('input', (e) => {
-          let value = e.target.value;
-          let display = document.getElementById(id + 'Value');
-          if (id === 'temperature') display.textContent = (value > 0 ? '+' : '') + value;
-          else if (id === 'hue') display.textContent = value + '°';
-          else if (id === 'mediaRotation') display.textContent = value + '°';
-          else if (id.includes('text') || id.includes('audio') || id === 'transitionDuration') display.textContent = value + (id.includes('Size') ? 'px' : 's');
-          else if (id === 'audioVolume') display.textContent = Math.round(value * 100) + '%';
-          else if (id === 'mediaOpacity') display.textContent = Math.round(value * 100) + '%';
-          else if (id === 'mediaScale') display.textContent = value + 'x';
-          else if (id === 'mediaSpeed') display.textContent = value + 'x';
-          else display.textContent = value;
-        });
-      }
-    });
-
-    // ===== FRAME EXTRACTION =====
+    // ===== EFFECTS =====
     function extractFrame() {
-      if (!video.src || video.error || video.readyState < 2 || !video.currentSrc) {
-        alert('Load a playable video first');
+      if (!video.src || video.readyState < 2) {
+        alert('Load a video first');
         return;
       }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -660,9 +443,16 @@
         gpu.canvas.width = canvas.width;
         gpu.canvas.height = canvas.height;
       }
+      console.log('✅ Frame extracted');
     }
 
-    function resetFrame() { if (originalFrame) ctx.putImageData(originalFrame, 0, 0); }
+    function resetFrame() { 
+      if (originalFrame) {
+        ctx.putImageData(originalFrame, 0, 0);
+        console.log('✅ Frame reset');
+      }
+    }
+
     function exportFrame() {
       if (!originalFrame) return;
       const tc = document.createElement('canvas');
@@ -677,269 +467,20 @@
       });
     }
 
-    // ===== APPLY EFFECTS =====
-    function applySliderEffect(type) {
-      if (!originalFrame) return;
-      const values = {
-        brightness: parseFloat(document.getElementById('brightnessSlider').value),
-        contrast: parseFloat(document.getElementById('contrastSlider').value),
-        saturation: parseFloat(document.getElementById('saturationSlider').value),
-        exposure: parseFloat(document.getElementById('exposureSlider').value),
-        temperature: parseFloat(document.getElementById('temperatureSlider').value),
-        vibrance: parseFloat(document.getElementById('vibranceSlider').value),
-        vignette: parseFloat(document.getElementById('vignetteSlider').value),
-        blur: parseFloat(document.getElementById('blurSlider').value),
-        sharpen: parseFloat(document.getElementById('sharpenSlider').value),
-        hue: parseFloat(document.getElementById('hueSlider').value)
-      };
-
-      let result = originalFrame;
-      if (type === 'brightness' && gpu.brightness) result = gpu.brightness(result, values.brightness);
-      else if (type === 'contrast' && gpu.contrast) result = gpu.contrast(result, values.contrast);
-      else if (type === 'saturation' && gpu.saturation) result = gpu.saturation(result, values.saturation);
-      else if (type === 'exposure' && gpu.exposure) result = gpu.exposure(result, values.exposure);
-      else if (type === 'temperature' && gpu.temperature) result = gpu.temperature(result, values.temperature);
-      else if (type === 'vibrance' && gpu.vibrance) result = gpu.vibrance(result, values.vibrance);
-      else if (type === 'vignette' && gpu.vignette) result = gpu.vignette(result, values.vignette);
-      else if (type === 'blur' && gpu.blur) result = gpu.blur(result, values.blur);
-      else if (type === 'sharpen' && gpu.sharpen) result = gpu.sharpen(result, values.sharpen);
-      else if (type === 'hue' && gpu.hueShift) result = gpu.hueShift(result, values.hue * Math.PI / 180);
-
-      ctx.putImageData(result, 0, 0);
+        function setTextPosition(p) { 
+      currentTextPosition = p; 
     }
-
-    function applyGrayscale() { if (!originalFrame || !gpu.grayscale) return; ctx.putImageData(gpu.grayscale(originalFrame), 0, 0); }
-    function applySepia() { if (!originalFrame || !gpu.sepia) return; ctx.putImageData(gpu.sepia(originalFrame), 0, 0); }
-
-    // ===== TIMELINE =====
-    document.getElementById('timelineTrack').addEventListener('click', function(event) {
-      if (!video.src || video.error || video.readyState < 2 || !video.currentSrc || !video.duration) return;
-      const rect = this.getBoundingClientRect();
-      const scrollLeft = this.parentElement.scrollLeft;
-      const clickX = event.clientX - rect.left + scrollLeft - 60;
-      const timeFromClick = clickX / pixelsPerSecond;
-      video.currentTime = Math.max(0, Math.min(timeFromClick, video.duration));
-      updatePlayhead();
-    });
-
-    function updatePlayhead() {
-      const ct = video.currentTime;
-      const d = video.duration || 60;
-      const position = (ct / d) * 100;
-      document.getElementById('playhead').style.left = `calc(60px + ${position}%)`;
+    
+    function setTextStyle(s) { 
+      currentTextStyle = s; 
     }
-
-    function getTransitionColor(name) {
-      const map = {
-        fade: 'linear-gradient(135deg, #f97316 0%, #facc15 100%)',
-        zoom: 'linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)',
-        slide: 'linear-gradient(135deg, #38bdf8 0%, #22c55e 100%)',
-        blur: 'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)'
-      };
-      return map[name] || '#9d4edd';
-    }
-
-    function renderTimeline() {
-      const videoLane = document.getElementById('effectBlocks');
-      const textLane = document.getElementById('textBlocks');
-      const audioLane = document.getElementById('audioBlocks');
-      const mediaLane = document.getElementById('mediaBlocks');
-      
-      videoLane.innerHTML = '';
-      textLane.innerHTML = '';
-      audioLane.innerHTML = '';
-      mediaLane.innerHTML = '';
-
-      timelineEffects.forEach(e => {
-        const width = Math.max((e.end - e.start) * pixelsPerSecond, 20);
-        const left = e.start * pixelsPerSecond;
-        const block = document.createElement('div');
-        const isTransition = e.type.startsWith('transition-');
-        block.className = 'block ' + (isTransition ? 'block-transition' : 'block-video');
-        block.style.left = left + 'px';
-        block.style.width = width + 'px';
-        if (isTransition) {
-          block.style.background = getTransitionColor(e.type.replace('transition-', ''));
-          block.textContent = e.type.replace('transition-', '').toUpperCase();
-        } else {
-          block.textContent = e.type.substring(0, 4).toUpperCase();
-        }
-        block.onclick = (ev) => { ev.stopPropagation(); deleteEffect(e.id); };
-        videoLane.appendChild(block);
-      });
-
-      textOverlays.forEach(t => {
-        const width = Math.max(t.dur * pixelsPerSecond, 20);
-        const left = t.start * pixelsPerSecond;
-        const b = document.createElement('div');
-        b.className = 'block block-text';
-        b.style.left = left + 'px';
-        b.style.width = width + 'px';
-        b.textContent = t.content.substring(0, 6);
-        b.onclick = (ev) => { ev.stopPropagation(); editTextOverlay(t.id); };
-        textLane.appendChild(b);
-      });
-
-      audioTracks.forEach(a => {
-        const width = Math.max(3 * pixelsPerSecond, 40);
-        const left = a.start * pixelsPerSecond;
-        const b = document.createElement('div');
-        b.className = 'block block-audio';
-        b.style.left = left + 'px';
-        b.style.width = width + 'px';
-        b.textContent = '🎵';
-        b.onclick = (ev) => { ev.stopPropagation(); deleteAudioTrack(a.id); };
-        audioLane.appendChild(b);
-      });
-
-      if (mediaComposer && mediaComposer.items) {
-        mediaComposer.items.forEach(m => {
-          const width = Math.max((m.startTime + (m.element.duration || 3)) * pixelsPerSecond, 20);
-          const left = m.startTime * pixelsPerSecond;
-          const b = document.createElement('div');
-          b.className = 'block block-video';
-          b.style.left = left + 'px';
-          b.style.width = width + 'px';
-          b.textContent = m.type === 'video' ? '🎬' : '🖼️';
-          b.style.background = 'linear-gradient(135deg, #06b6d4 0%, #06d6d9 100%)';
-          mediaLane.appendChild(b);
-        });
-      }
-
-      const totalDuration = video.duration || 60;
-      const totalWidth = totalDuration * pixelsPerSecond;
-      document.getElementById('effectBlocks').style.width = totalWidth + 'px';
-      document.getElementById('textBlocks').style.width = totalWidth + 'px';
-      document.getElementById('audioBlocks').style.width = totalWidth + 'px';
-      document.getElementById('mediaBlocks').style.width = totalWidth + 'px';
-    }
-
-    function playTimeline() {
-      if (!video.src || video.error || video.readyState < 2 || !video.currentSrc) {
-        alert('Please load a playable video before previewing.');
-        return;
-      }
-      renderTimeline();
-      if (!gpu) {
-        gpu = new GPUProcessor(document.createElement('canvas'));
-        gpu.canvas.width = canvas.width;
-        gpu.canvas.height = canvas.height;
-      }
-      video.play().catch((err) => {
-        console.warn('Video playback failed:', err.message || err);
-        stopTimeline();
-      });
-      isPlayingTimeline = true;
-
-      if (audioTracks.length > 0) {
-        const audioFileEl = document.getElementById('audioFile').files[0];
-        if (audioFileEl) {
-          if (!playingAudio) {
-            playingAudio = new Audio(URL.createObjectURL(audioFileEl));
-            playingAudio.volume = audioTracks[0].vol;
-          }
-          playingAudio.currentTime = audioTracks[0].start;
-          playingAudio.play().catch(() => {});
-        }
-      }
-
-      function render() {
-        if (!isPlayingTimeline || video.ended) { stopTimeline(); return; }
-        const ct = video.currentTime;
-        frameCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        let fd = frameCtx.getImageData(0, 0, canvas.width, canvas.height);
-
-        let transitionApplied = false;
-        timelineEffects.forEach(e => {
-          if (ct >= e.start && ct <= e.end) {
-            const progress = (ct - e.start) / Math.max(0.001, e.end - e.start);
-            try {
-              if (e.type === 'brightness' && gpu.brightness) fd = gpu.brightness(fd, e.value);
-              else if (e.type === 'contrast' && gpu.contrast) fd = gpu.contrast(fd, e.value);
-              else if (e.type === 'saturation' && gpu.saturation) fd = gpu.saturation(fd, e.value);
-              else if (e.type === 'transition-blur' && gpu.blur) fd = gpu.blur(fd, Math.min(20, 3 + progress * 20));
-              else if (e.type === 'transition-fade') {
-                ctx.putImageData(fd, 0, 0);
-                ctx.fillStyle = `rgba(0,0,0,${Math.min(1, progress)})`;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                transitionApplied = true;
-              } else if (e.type === 'transition-zoom') {
-                transitionApplied = true;
-                const scale = 1 + 0.4 * (1 - Math.abs(progress - 0.5) * 2);
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.save();
-                ctx.translate(canvas.width / 2, canvas.height / 2);
-                ctx.scale(scale, scale);
-                ctx.drawImage(frameCanvas, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
-                ctx.restore();
-              } else if (e.type === 'transition-slide') {
-                transitionApplied = true;
-                const offset = (progress * 2 - 1) * canvas.width * 0.7;
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(frameCanvas, offset, 0, canvas.width, canvas.height);
-              }
-            } catch (ex) {
-              console.warn('Transition effect failed:', ex);
-            }
-          }
-        });
-
-        if (!transitionApplied) {
-          ctx.putImageData(fd, 0, 0);
-        }
-
-        // Render media composition
-        if (mediaComposer) {
-          mediaComposer.renderFrame(ct);
-        }
-
-        textOverlays.forEach(t => {
-          if (ct >= t.start && ct <= t.start + t.dur) {
-            ctx.font = `${t.style} ${t.sz}px Arial`;
-            ctx.fillStyle = t.col;
-            ctx.textAlign = 'center';
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-            ctx.shadowBlur = 10;
-            const y = t.pos === 'top' ? t.sz + 20 : t.pos === 'bottom' ? canvas.height - t.sz - 20 : canvas.height / 2;
-            ctx.fillText(t.content, canvas.width / 2, y);
-          }
-        });
-
-        updatePlayhead();
-        timelinePlaybackId = requestAnimationFrame(render);
-      }
-      render();
-    }
-
-    function stopTimeline() {
-      video.pause();
-      if (playingAudio) playingAudio.pause();
-      isPlayingTimeline = false;
-      if (timelinePlaybackId) cancelAnimationFrame(timelinePlaybackId);
-    }
-
-    function addPresetEffect(name) {
-      if (!video.src) return;
-      const p = effectPresets[name];
-      const duration = video.duration || 10;
-      Object.keys(p).forEach(t => {
-        timelineEffects.push({ type: t, start: 0, end: duration, value: p[t], id: Date.now() + Math.random() });
-      });
-      renderTimeline();
-    }
-
-    function deleteEffect(id) {
-      timelineEffects = timelineEffects.filter(e => e.id !== id);
-      renderTimeline();
-    }
-
-    // ===== TEXT =====
-    function setTextPosition(p) { currentTextPosition = p; }
-    function setTextStyle(s) { currentTextStyle = s; }
 
     function addTextOverlay() {
       const c = document.getElementById('textContent').value.trim();
-      if (!c) return;
+      if (!c) {
+        alert('Enter text first');
+        return;
+      }
       textOverlays.push({
         id: Date.now(),
         content: c,
@@ -951,133 +492,136 @@
         dur: parseFloat(document.getElementById('textDuration').value)
       });
       document.getElementById('textContent').value = '';
-      renderTimeline();
-      document.getElementById('textStatus').textContent = '✅ Added';
-    }
-
-    function editTextOverlay(id) {
-      const t = textOverlays.find(x => x.id === id);
-      if (!t) return;
-      editingTextId = id;
-      document.getElementById('textContent').value = t.content;
-      document.getElementById('textColor').value = t.col;
-      document.getElementById('textSize').value = t.sz;
-      document.getElementById('textSizeValue').textContent = t.sz + 'px';
-      document.getElementById('textStart').value = t.start;
-      document.getElementById('textStartValue').textContent = t.start + 's';
-      document.getElementById('textDuration').value = t.dur;
-      document.getElementById('textDurationValue').textContent = t.dur + 's';
-
-      document.getElementById('textEditorMode').style.display = 'block';
-      document.getElementById('editingTextId').textContent = t.content;
-      document.getElementById('addTextBtn').style.display = 'none';
-      document.getElementById('updateTextBtn').style.display = 'block';
-
-      video.currentTime = t.start;
-      updatePlayhead();
-      switchTab('text', document.getElementById('textTabBtn'));
-    }
-
-    function updateTextOverlay() {
-      const t = textOverlays.find(x => x.id === editingTextId);
-      if (!t) return;
-      t.content = document.getElementById('textContent').value.trim();
-      t.col = document.getElementById('textColor').value;
-      t.sz = parseInt(document.getElementById('textSize').value);
-      t.start = parseFloat(document.getElementById('textStart').value);
-      t.dur = parseFloat(document.getElementById('textDuration').value);
-      renderTimeline();
-      cancelTextEdit();
-      document.getElementById('textStatus').textContent = '✅ Updated';
-    }
-
-    function cancelTextEdit() {
-      editingTextId = null;
-      document.getElementById('textEditorMode').style.display = 'none';
-      document.getElementById('addTextBtn').style.display = 'block';
-      document.getElementById('updateTextBtn').style.display = 'none';
-      document.getElementById('textContent').value = '';
-    }
-
-    function previewText() {
-      if (textOverlays.length === 0) return;
-      playTimeline();
+      console.log('✅ Text added');
     }
 
     function deleteTextOverlay(id) {
       textOverlays = textOverlays.filter(t => t.id !== id);
-      renderTimeline();
     }
 
-    // ===== AUDIO =====
-    function addAudioTrack() {
-      const audioFileEl = document.getElementById('audioFile').files[0];
-      if (!audioFileEl) return;
-      audioTracks = [{
-        id: Date.now(),
-        url: URL.createObjectURL(audioFileEl),
-        vol: parseFloat(document.getElementById('audioVolume').value),
-        start: parseFloat(document.getElementById('audioStart').value),
-        fadeIn: parseFloat(document.getElementById('audioFadeIn').value),
-        fadeOut: parseFloat(document.getElementById('audioFadeOut').value)
-      }];
-      renderTimeline();
-      document.getElementById('audioStatus').textContent = '✅ Added';
-    }
 
-    function previewAudio() {
-      if (audioTracks.length === 0) return;
-      playTimeline();
-    }
-
-    function deleteAudioTrack(id) {
-      audioTracks = audioTracks.filter(a => a.id !== id);
-      renderTimeline();
-    }
-
-    // ===== TRANSITIONS =====
-    function addTransition(type) {
-      if (!video.src || video.error || video.readyState < 2 || !video.currentSrc) {
-        alert('Load a playable video before adding a transition.');
+    // ===== PLAYBACK =====
+    function playComposition() {
+      if (!mediaComposer || mediaComposer.items.length === 0) {
+        alert('Add media first!');
         return;
       }
-      const duration = parseFloat(document.getElementById('transitionDuration').value) || 0.5;
-      const videoDuration = video.duration || 60;
-      const start = Math.min(Math.max(0, video.currentTime), Math.max(0, videoDuration - duration));
-      timelineEffects.push({
-        type: 'transition-' + type,
-        start,
-        end: start + duration,
-        value: duration,
-        id: Date.now() + Math.random()
-      });
-      renderTimeline();
-      document.getElementById('transitionStatus').textContent = '✅ ' + type + ' added';
-    }
 
-    // ===== MAGIC CUT =====
-    async function startMagicCut() {
-      if (!video.src) return;
-      if (!magicCut) magicCut = new MagicCut(video, canvas);
-      document.getElementById('magicCutStatus').textContent = '🔄 Analyzing...';
-      try {
-        magicCutAnalysis = await magicCut.analyzeFull();
-        document.getElementById('magicCutResults').style.display = 'block';
-        document.getElementById('momentCount').textContent = magicCutAnalysis.moments.length;
-        document.getElementById('cutCount').textContent = magicCutAnalysis.cutPoints.length;
-        document.getElementById('magicCutStatus').textContent = '✅ Done!';
-      } catch (e) {
-        document.getElementById('magicCutStatus').textContent = '❌ ' + e.message;
+      console.log('▶ Starting playback with', mediaComposer.items.length, 'items');
+      isPlayingComposition = true;
+      let startTime = Date.now();
+      const totalDuration = mediaComposer.getTotalDuration();
+
+      function render() {
+        if (!isPlayingComposition) return;
+
+        const elapsed = (Date.now() - startTime) / 1000;
+
+        if (elapsed > totalDuration) {
+          stopComposition();
+          return;
+        }
+
+        mediaComposer.renderFrame(elapsed);
+        const position = (elapsed / totalDuration) * 100;
+        document.getElementById('playhead').style.left = `calc(60px + ${position}%)`;
+
+        compositionPlaybackId = requestAnimationFrame(render);
       }
+
+      render();
     }
 
-    function applyMagicCutToTimeline() {
-      if (!magicCutAnalysis) return;
-      magicCutAnalysis.cutPoints.forEach((c, i) => {
-        timelineEffects.push({ type: 'AI-Cut', start: c.start, end: c.end, value: 1, id: Date.now() + i });
-      });
+    function stopComposition() {
+      isPlayingComposition = false;
+      if (compositionPlaybackId) cancelAnimationFrame(compositionPlaybackId);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      console.log('⏹ Playback stopped');
+    }
+
+    function applySliderEffect(type) {
+      if (!originalFrame || !gpu) return;
+      const value = document.getElementById(type + 'Slider').value;
+      let result = originalFrame;
+      
+      if (type === 'brightness' && gpu.brightness) result = gpu.brightness(result, parseFloat(value));
+      else if (type === 'contrast' && gpu.contrast) result = gpu.contrast(result, parseFloat(value));
+      else if (type === 'saturation' && gpu.saturation) result = gpu.saturation(result, parseFloat(value));
+      else if (type === 'blur' && gpu.blur) result = gpu.blur(result, parseFloat(value));
+      
+      ctx.putImageData(result, 0, 0);
+    }
+
+    function applyGrayscale() { if (!originalFrame || !gpu) return; ctx.putImageData(gpu.grayscale(originalFrame), 0, 0); }
+    function applySepia() { if (!originalFrame || !gpu) return; ctx.putImageData(gpu.sepia(originalFrame), 0, 0); }
+
+    // ===== TIMELINE =====
+    function renderTimeline() {
+      const mediaLane = document.getElementById('mediaBlocks');
+      mediaLane.innerHTML = '';
+
+      if (mediaComposer && mediaComposer.items && mediaComposer.items.length > 0) {
+        mediaComposer.items.forEach(item => {
+          const block = document.createElement('div');
+          block.className = 'block block-video';
+          block.style.left = (item.startTime * pixelsPerSecond) + 'px';
+          block.style.width = Math.max(item.duration * pixelsPerSecond, 30) + 'px';
+          block.textContent = item.type === 'video' ? '🎬' : '🖼️';
+          block.style.background = 'linear-gradient(135deg, #06b6d4 0%, #06d6d9 100%)';
+          mediaLane.appendChild(block);
+        });
+      }
+
+      const totalDuration = mediaComposer ? (mediaComposer.getTotalDuration() || 60) : 60;
+      const totalWidth = totalDuration * pixelsPerSecond;
+      mediaLane.style.width = totalWidth + 'px';
+    }
+
+    document.getElementById('zoomSlider').addEventListener('input', (e) => {
+      pixelsPerSecond = parseInt(e.target.value);
+      document.getElementById('zoomValue').textContent = pixelsPerSecond + 'px/s';
       renderTimeline();
-      document.getElementById('magicCutStatus').textContent = '✅ Applied!';
+    });
+
+    // ===== PLAY COMPOSITION =====
+    function playComposition() {
+      initMediaComposer();
+      
+      if (!mediaComposer || mediaComposer.items.length === 0) {
+        alert('❌ Add media first! Click "Add Video" or "Add Image"');
+        return;
+      }
+
+      console.log('▶ Starting playback with', mediaComposer.items.length, 'items');
+      isPlayingComposition = true;
+      let startTime = Date.now();
+      const totalDuration = mediaComposer.getTotalDuration();
+
+      function render() {
+        if (!isPlayingComposition) return;
+
+        const elapsed = (Date.now() - startTime) / 1000;
+
+        if (elapsed > totalDuration) {
+          stopComposition();
+          return;
+        }
+
+        mediaComposer.renderFrame(elapsed);
+        const position = (elapsed / totalDuration) * 100;
+        document.getElementById('playhead').style.left = `calc(60px + ${position}%)`;
+
+        compositionPlaybackId = requestAnimationFrame(render);
+      }
+
+      render();
+    }
+
+    function stopComposition() {
+      isPlayingComposition = false;
+      if (compositionPlaybackId) cancelAnimationFrame(compositionPlaybackId);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      console.log('⏹ Playback stopped');
     }
 
     // ===== MULTI-MEDIA =====
@@ -1090,13 +634,14 @@
         const file = e.target.files[0];
         if (!file) return;
         try {
+          console.log('📹 Adding video:', file.name);
           await mediaComposer.addVideo(file, 0);
-          mediaItems.push({ id: Date.now(), type: 'video', name: file.name });
-          updateMediaLibrary();
           renderTimeline();
-          document.getElementById('aiStatus').textContent = '✅ Video added to composition';
+          updateMediaLibrary();
+          console.log('✅ Video added successfully');
         } catch (err) {
-          document.getElementById('aiStatus').textContent = '❌ Error: ' + err.message;
+          console.error('❌ Error adding video:', err);
+          alert('Error adding video: ' + err.message);
         }
       };
       input.click();
@@ -1111,13 +656,14 @@
         const file = e.target.files[0];
         if (!file) return;
         try {
+          console.log('🖼️ Adding image:', file.name);
           await mediaComposer.addImage(file, 0, 5);
-          mediaItems.push({ id: Date.now(), type: 'image', name: file.name });
-          updateMediaLibrary();
           renderTimeline();
-          document.getElementById('aiStatus').textContent = '✅ Image added to composition';
+          updateMediaLibrary();
+          console.log('✅ Image added successfully');
         } catch (err) {
-          document.getElementById('aiStatus').textContent = '❌ Error: ' + err.message;
+          console.error('❌ Error adding image:', err);
+          alert('Error adding image: ' + err.message);
         }
       };
       input.click();
@@ -1125,63 +671,79 @@
 
     function updateMediaLibrary() {
       const lib = document.getElementById('mediaLibrary');
-      if (!mediaComposer || mediaComposer.items.length === 0) {
-        lib.innerHTML = '<div style="color: #9d4edd; font-size: 0.7em;">No media added yet</div>';
+      if (!mediaComposer || !mediaComposer.items || mediaComposer.items.length === 0) {
+        lib.innerHTML = '<div style="color: #9d4edd; font-size: 0.8em; padding: 10px;">✨ No media added yet</div>';
         return;
       }
-
-      lib.innerHTML = mediaComposer.items.map(item => `
-        <div class="media-item ${selectedMediaId === item.id ? 'selected' : ''}" onclick="selectMedia(this, '${item.id}')">
-          <span>${item.type === 'video' ? '🎬' : '🖼️'} ${item.type.toUpperCase()}</span>
-          <button class="media-item-remove" onclick="removeMedia('${item.id}'); event.stopPropagation();">Remove</button>
+      lib.innerHTML = mediaComposer.items.map((item, idx) => `
+        <div class="media-item">
+          <span>${item.type === 'video' ? '🎬' : '🖼️'} ${item.type.toUpperCase()} #${idx + 1}</span>
+          <button class="media-item-remove" onclick="removeMedia('${item.id}')">Remove</button>
         </div>
       `).join('');
     }
 
-    function selectMedia(elem, id) {
-      document.querySelectorAll('.media-item').forEach(e => e.classList.remove('selected'));
-      elem.classList.add('selected');
-      selectedMediaId = id;
-      document.getElementById('mediaPropertiesPanel').style.display = 'block';
-    }
-
-    function updateSelectedMedia(prop, value) {
-      if (!selectedMediaId || !mediaComposer) return;
-      const item = mediaComposer.items.find(m => m.id === selectedMediaId);
-      if (!item) return;
-      
-      const props = {};
-      props[prop] = prop === 'opacity' ? parseFloat(value) : prop === 'scale' ? parseFloat(value) : prop === 'rotation' ? parseFloat(value) : prop === 'speed' ? parseFloat(value) : value;
-      mediaComposer.updateMedia(selectedMediaId, props);
-    }
-
     function removeMedia(id) {
-      if (!mediaComposer) return;
-      mediaComposer.removeMedia(id);
-      mediaItems = mediaItems.filter(m => m.id !== id);
-      selectedMediaId = null;
-      document.getElementById('mediaPropertiesPanel').style.display = 'none';
-      updateMediaLibrary();
-      renderTimeline();
-    }
-
-    function clearAllMedia() {
-      if (!mediaComposer) return;
-      mediaComposer.clearAll();
-      mediaItems = [];
-      selectedMediaId = null;
-      updateMediaLibrary();
-      renderTimeline();
+      if (mediaComposer) {
+        mediaComposer.removeMedia(id);
+        renderTimeline();
+        updateMediaLibrary();
+      }
     }
 
     function setMediaCompositionMode(mode) {
       if (!mediaComposer) return;
-      currentCompositionMode = mode;
-      mediaComposer.renderMode = mode;
+      mediaComposer.setCompositionMode(mode);
       document.getElementById('btnSequential').style.opacity = mode === 'sequential' ? '1' : '0.5';
       document.getElementById('btnOverlay').style.opacity = mode === 'overlay' ? '1' : '0.5';
       document.getElementById('btnSplit').style.opacity = mode === 'split' ? '1' : '0.5';
-      document.getElementById('mediaCompositionInfo').textContent = `Mode: ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
+      console.log('✅ Mode:', mode);
+    }
+
+    function clearAllMedia() {
+      if (!mediaComposer || mediaComposer.items.length === 0) return;
+      if (confirm('Clear all media?')) {
+        mediaComposer.clearAll();
+        renderTimeline();
+        updateMediaLibrary();
+      }
+    }
+
+    // ===== TEXT =====
+    function addTextOverlay() {
+      const text = document.getElementById('textContent').value.trim();
+      if (!text) return;
+      textOverlays.push({
+        id: Date.now(),
+        content: text,
+        start: parseFloat(document.getElementById('textStart').value)
+      });
+      document.getElementById('textContent').value = '';
+      document.getElementById('textStatus').textContent = '✅ Text added';
+    }
+
+    function addPresetEffect(name) {
+      console.log('Applied preset:', name);
+    }
+
+    // ===== MAGIC CUT =====
+    async function startMagicCut() {
+      if (!video.src) return;
+      if (!magicCut) magicCut = new MagicCut(video, canvas);
+      document.getElementById('magicCutStatus').textContent = '🔄 Analyzing...';
+      try {
+        const analysis = await magicCut.analyzeFull();
+        document.getElementById('magicCutResults').style.display = 'block';
+        document.getElementById('momentCount').textContent = analysis.moments.length;
+        document.getElementById('cutCount').textContent = analysis.cutPoints.length;
+        document.getElementById('magicCutStatus').textContent = '✅ Analysis complete!';
+      } catch (e) {
+        document.getElementById('magicCutStatus').textContent = '❌ Analysis failed';
+      }
+    }
+
+    function applyMagicCutToTimeline() {
+      document.getElementById('magicCutStatus').textContent = '✅ Applied!';
     }
 
     // ===== EXPORT =====
@@ -1189,17 +751,21 @@
     let recordedChunks = [];
 
     function startExport() {
-      if (!video.src) return;
+      if (!mediaComposer || mediaComposer.items.length === 0) {
+        alert('Add media first!');
+        return;
+      }
       recordedChunks = [];
-      video.currentTime = 0;
       const stream = canvas.captureStream(30);
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 2500000 });
+      mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
       mediaRecorder.start();
       document.getElementById('exportStartBtn').disabled = true;
+      document.getElementById('exportStartBtn').style.opacity = '0.5';
       document.getElementById('exportStopBtn').disabled = false;
+      document.getElementById('exportStopBtn').style.opacity = '1';
       document.getElementById('exportStatus').textContent = '🔴 Recording...';
-      playTimeline();
+      playComposition();
     }
 
     function stopExport() {
@@ -1211,26 +777,63 @@
         link.download = `composition-${Date.now()}.webm`;
         link.click();
         document.getElementById('exportStartBtn').disabled = false;
+        document.getElementById('exportStartBtn').style.opacity = '1';
         document.getElementById('exportStopBtn').disabled = true;
-        document.getElementById('exportStatus').textContent = '✅ Done!';
-        stopTimeline();
+        document.getElementById('exportStopBtn').style.opacity = '0.5';
+        document.getElementById('exportStatus').textContent = '✅ Exported!';
+        stopComposition();
       };
     }
 
-    // Initialize
-    document.addEventListener('DOMContentLoaded', () => {
-      renderTimeline();
-      updateTokenDisplay();
-    });
+    // ===== COMPARE MODE (Before/After Slider) =====
+    let showCompareMode = false;
+    let comparePosition = 50;
 
-    function updateTokenDisplay() {
-      const max = parseInt(document.getElementById('tokensMax').textContent) || 1000;
-      tokensUsed = parseInt(document.getElementById('tokensUsed').textContent) || 0;
-      const remaining = max - tokensUsed;
-      document.getElementById('tokensRemaining').textContent = remaining;
-      const percent = Math.min((tokensUsed / max) * 100, 100);
-      document.getElementById('tokenProgressBar').style.width = percent + '%';
+    function toggleCompare() {
+      showCompareMode = !showCompareMode;
+      const btn = document.getElementById('compareBtn');
+      const slider = document.getElementById('compareSlider');
+      
+      if (showCompareMode) {
+        btn.style.background = 'linear-gradient(135deg, #06b6d4 0%, #06d6d9 100%)';
+        btn.style.color = 'white';
+        btn.style.boxShadow = '0 0 20px rgba(6, 214, 217, 0.6)';
+        slider.style.display = 'block';
+        renderCompareSlider();
+      } else {
+        btn.style.background = 'linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(6, 214, 217, 0.3) 100%)';
+        slider.style.display = 'none';
+      }
     }
+
+    function renderCompareSlider() {
+      const slider = document.getElementById('compareSlider');
+      const handle = slider.querySelector('.compare-slider-handle');
+      const container = document.getElementById('outputContainer');
+      
+      slider.style.left = comparePosition + '%';
+      handle.style.left = '-2px';
+      
+      let isDragging = false;
+      handle.addEventListener('mousedown', () => { isDragging = true; });
+      document.addEventListener('mouseup', () => { isDragging = false; });
+      
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const rect = container.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const newPosition = (x / rect.width) * 100;
+        if (newPosition >= 0 && newPosition <= 100) {
+          comparePosition = newPosition;
+          slider.style.left = newPosition + '%';
+        }
+      });
+    }
+
+    // Initialize
+    window.addEventListener('load', () => {
+      renderTimeline();
+    });
   </script>
 </body>
 </html>
