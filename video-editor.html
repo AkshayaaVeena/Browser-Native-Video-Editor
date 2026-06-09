@@ -30,7 +30,7 @@
           <div class="preview-header-main">✨ Edited Output</div>
           <div class="preview-canvas-wrapper">
             <canvas id="canvas" width="1920" height="1080"></canvas>
-          </div>
+            <canvas id="compareOriginalCanvas" width="1920" height="1080" aria-hidden="true"></canvas>
           
           <!-- Compare Slider (hidden by default) -->
           <div class="compare-slider" id="compareSlider" style="display: none;">
@@ -39,6 +39,8 @@
             <div class="compare-label compare-label-after">✨ Edited</div>
           </div>
           
+          </div>
+
           <!-- MAIN CONTROLS -->
           <div class="preview-controls-main">
             <div class="control-group">
@@ -104,7 +106,6 @@
         <button class="sidebar-tab-btn" onclick="switchTab('color', this)">🎨 Color</button>
         <button class="sidebar-tab-btn" onclick="switchTab('filters', this)">✨ Filters</button>
         <button class="sidebar-tab-btn" onclick="switchTab('text', this)">📝 Text</button>
-        <button class="sidebar-tab-btn" onclick="switchTab('audio', this)">🎵 Audio</button>
         <button class="sidebar-tab-btn" onclick="switchTab('ai', this)">🤖 AI</button>
         <button class="sidebar-tab-btn" onclick="switchTab('export', this)">💾 Export</button>
       </div>
@@ -356,6 +357,8 @@
     const video = document.getElementById("video");
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
+    const compareOriginalCanvas = document.getElementById('compareOriginalCanvas');
+    const compareOriginalCtx = compareOriginalCanvas.getContext('2d');
 
     let originalFrame = null;
     let gpu = null;
@@ -370,6 +373,9 @@
     let currentTextStyle = 'normal';
     let audioTracks = [];
     let playingAudio = null;
+    let compositionPreviewAudio = null;
+    let exportAudioContext = null;
+    let exportAudioElements = [];
     let timelineEffects = [];
 
     function addTransition(type) {
@@ -385,18 +391,21 @@
         value: duration,
         id: Date.now() + Math.random()
       });
+      document.getElementById('transitionStatus').textContent = `Added ${type} transition`;
       console.log('✅ Transition added');
     }
 
     function addAudioTrack() {
       const audioFileEl = document.getElementById('audioFile').files[0];
       if (!audioFileEl) return;
+      audioTracks.forEach(track => URL.revokeObjectURL(track.url));
       audioTracks = [{
         id: Date.now(),
         url: URL.createObjectURL(audioFileEl),
         vol: parseFloat(document.getElementById('audioVolume').value),
         start: parseFloat(document.getElementById('audioStart').value)
       }];
+      document.getElementById('audioStatus').textContent = 'Audio added';
       console.log('✅ Audio added');
     }
 
@@ -430,14 +439,43 @@
       }
     }
 
+    function syncCompareCanvasSize() {
+      if (compareOriginalCanvas.width !== canvas.width) compareOriginalCanvas.width = canvas.width;
+      if (compareOriginalCanvas.height !== canvas.height) compareOriginalCanvas.height = canvas.height;
+    }
+
+    function setCompareOriginalFromCanvas() {
+      syncCompareCanvasSize();
+      compareOriginalCtx.clearRect(0, 0, compareOriginalCanvas.width, compareOriginalCanvas.height);
+      compareOriginalCtx.drawImage(canvas, 0, 0, compareOriginalCanvas.width, compareOriginalCanvas.height);
+    }
+
+    function setCompareOriginalFromFrame(frame) {
+      if (!frame) return;
+      syncCompareCanvasSize();
+      compareOriginalCtx.putImageData(frame, 0, 0);
+    }
+
     // ===== EFFECTS =====
+    function extractFrameFromCanvas() {
+      originalFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      setCompareOriginalFromFrame(originalFrame);
+      if (!gpu) {
+        gpu = new GPUProcessor(document.createElement('canvas'));
+        gpu.canvas.width = canvas.width;
+        gpu.canvas.height = canvas.height;
+      }
+      console.log('✅ Frame extracted automatically from canvas');
+    }
+
     function extractFrame() {
       if (!video.src || video.readyState < 2) {
-        alert('Load a video first');
+        extractFrameFromCanvas();
         return;
       }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       originalFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      setCompareOriginalFromFrame(originalFrame);
       if (!gpu) {
         gpu = new GPUProcessor(document.createElement('canvas'));
         gpu.canvas.width = canvas.width;
@@ -467,7 +505,7 @@
       });
     }
 
-        function setTextPosition(p) { 
+    function setTextPosition(p) { 
       currentTextPosition = p; 
     }
     
@@ -492,6 +530,7 @@
         dur: parseFloat(document.getElementById('textDuration').value)
       });
       document.getElementById('textContent').value = '';
+      document.getElementById('textStatus').textContent = 'Text added';
       console.log('✅ Text added');
     }
 
@@ -499,61 +538,72 @@
       textOverlays = textOverlays.filter(t => t.id !== id);
     }
 
-
-    // ===== PLAYBACK =====
-    function playComposition() {
-      if (!mediaComposer || mediaComposer.items.length === 0) {
-        alert('Add media first!');
-        return;
-      }
-
-      console.log('▶ Starting playback with', mediaComposer.items.length, 'items');
-      isPlayingComposition = true;
-      let startTime = Date.now();
-      const totalDuration = mediaComposer.getTotalDuration();
-
-      function render() {
-        if (!isPlayingComposition) return;
-
-        const elapsed = (Date.now() - startTime) / 1000;
-
-        if (elapsed > totalDuration) {
-          stopComposition();
-          return;
-        }
-
-        mediaComposer.renderFrame(elapsed);
-        const position = (elapsed / totalDuration) * 100;
-        document.getElementById('playhead').style.left = `calc(60px + ${position}%)`;
-
-        compositionPlaybackId = requestAnimationFrame(render);
-      }
-
-      render();
-    }
-
-    function stopComposition() {
-      isPlayingComposition = false;
-      if (compositionPlaybackId) cancelAnimationFrame(compositionPlaybackId);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      console.log('⏹ Playback stopped');
-    }
-
     function applySliderEffect(type) {
+      if (!originalFrame) {
+        extractFrameFromCanvas();
+      }
       if (!originalFrame || !gpu) return;
-      const value = document.getElementById(type + 'Slider').value;
+      
+      const brightnessVal = parseFloat(document.getElementById('brightnessSlider').value);
+      const contrastVal = parseFloat(document.getElementById('contrastSlider').value);
+      const saturationVal = parseFloat(document.getElementById('saturationSlider').value);
+      const blurVal = parseFloat(document.getElementById('blurSlider').value);
+      
       let result = originalFrame;
       
-      if (type === 'brightness' && gpu.brightness) result = gpu.brightness(result, parseFloat(value));
-      else if (type === 'contrast' && gpu.contrast) result = gpu.contrast(result, parseFloat(value));
-      else if (type === 'saturation' && gpu.saturation) result = gpu.saturation(result, parseFloat(value));
-      else if (type === 'blur' && gpu.blur) result = gpu.blur(result, parseFloat(value));
+      if (gpu.brightness && brightnessVal !== 1.0) {
+        result = gpu.brightness(result, brightnessVal);
+      }
+      if (gpu.contrast && contrastVal !== 1.0) {
+        result = gpu.contrast(result, contrastVal);
+      }
+      if (gpu.saturation && saturationVal !== 1.0) {
+        result = gpu.saturation(result, saturationVal);
+      }
+      if (gpu.blur && blurVal !== 0) {
+        result = gpu.blur(result, blurVal);
+      }
       
       ctx.putImageData(result, 0, 0);
     }
 
-    function applyGrayscale() { if (!originalFrame || !gpu) return; ctx.putImageData(gpu.grayscale(originalFrame), 0, 0); }
-    function applySepia() { if (!originalFrame || !gpu) return; ctx.putImageData(gpu.sepia(originalFrame), 0, 0); }
+    function applyGrayscale() {
+      if (!originalFrame) extractFrameFromCanvas();
+      if (!originalFrame || !gpu) return;
+      ctx.putImageData(gpu.grayscale(originalFrame), 0, 0);
+    }
+    
+    function applySepia() {
+      if (!originalFrame) extractFrameFromCanvas();
+      if (!originalFrame || !gpu) return;
+      ctx.putImageData(gpu.sepia(originalFrame), 0, 0);
+    }
+
+    function renderTextOverlays(currentTime) {
+      textOverlays.forEach(text => {
+        const start = Number.isFinite(text.start) ? text.start : 0;
+        const duration = Number.isFinite(text.dur) ? text.dur : 5;
+        if (currentTime < start || currentTime > start + duration) return;
+
+        const size = text.sz || 40;
+        ctx.save();
+        ctx.font = `${text.style === 'bold' ? '700 ' : ''}${size}px Segoe UI, sans-serif`;
+        ctx.fillStyle = text.col || '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+        ctx.shadowBlur = 8;
+
+        const y = text.pos === 'top'
+          ? canvas.height * 0.15
+          : text.pos === 'bottom'
+            ? canvas.height * 0.85
+            : canvas.height * 0.5;
+
+        ctx.fillText(text.content, canvas.width / 2, y);
+        ctx.restore();
+      });
+    }
 
     // ===== TIMELINE =====
     function renderTimeline() {
@@ -583,6 +633,35 @@
       renderTimeline();
     });
 
+    function initRangeSliderLabels() {
+      const sliderLabels = [
+        { slider: 'transitionDuration', label: 'transitionDurationValue', format: value => `${Number(value).toFixed(1)}s` },
+        { slider: 'audioVolume', label: 'audioVolumeValue', format: value => `${Math.round(Number(value) * 100)}%` },
+        { slider: 'audioStart', label: 'audioStartValue', format: value => `${value}s` },
+        { slider: 'brightnessSlider', label: 'brightnessValue', format: value => Number(value).toFixed(1), onChange: () => applySliderEffect('brightness') },
+        { slider: 'contrastSlider', label: 'contrastValue', format: value => Number(value).toFixed(1), onChange: () => applySliderEffect('contrast') },
+        { slider: 'saturationSlider', label: 'saturationValue', format: value => Number(value).toFixed(1), onChange: () => applySliderEffect('saturation') },
+        { slider: 'blurSlider', label: 'blurValue', format: value => value, onChange: () => applySliderEffect('blur') },
+        { slider: 'textSize', label: 'textSizeValue', format: value => `${value}px` },
+        { slider: 'textStart', label: 'textStartValue', format: value => `${value}s` },
+        { slider: 'textDuration', label: 'textDurationValue', format: value => `${value}s` }
+      ];
+
+      sliderLabels.forEach(({ slider, label, format, onChange }) => {
+        const sliderEl = document.getElementById(slider);
+        const labelEl = document.getElementById(label);
+        if (!sliderEl || !labelEl) return;
+
+        const updateLabel = () => {
+          labelEl.textContent = format(sliderEl.value);
+          if (onChange) onChange();
+        };
+
+        sliderEl.addEventListener('input', updateLabel);
+        updateLabel();
+      });
+    }
+
     // ===== PLAY COMPOSITION =====
     function playComposition() {
       initMediaComposer();
@@ -596,6 +675,87 @@
       isPlayingComposition = true;
       let startTime = Date.now();
       const totalDuration = mediaComposer.getTotalDuration();
+      
+      // Prepare audio preview element (not used for export — export handled separately)
+      let previewAudioEl = null;
+      const audioTrack = audioTracks.length > 0 ? audioTracks[0] : null;
+      if (audioTrack) {
+        previewAudioEl = new Audio(audioTrack.url);
+        previewAudioEl.preload = 'auto';
+        previewAudioEl.volume = typeof audioTrack.vol === 'number' ? audioTrack.vol : 1;
+        previewAudioEl.loop = false;
+        previewAudioEl.pause();
+      }
+
+      // Ensure GPU processor exists to apply per-frame filters
+      if (!gpu) {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = canvas.width;
+        offscreen.height = canvas.height;
+        gpu = new GPUProcessor(offscreen);
+      }
+
+      // Helper: apply timeline effects / transitions to current canvas frame
+      function applyCompositionEffects(currentTime) {
+        try {
+          // Read current frame
+          let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          // Apply filter-style timeline effects (brightness, contrast, saturation, blur, grayscale, sepia)
+          timelineEffects.forEach(effect => {
+            if (!effect || currentTime < effect.start || currentTime > effect.end) return;
+            const t = (currentTime - effect.start) / Math.max(0.0001, (effect.end - effect.start));
+            const type = String(effect.type || '');
+            try {
+              if (type === 'brightness' && typeof effect.value === 'number') {
+                frame = gpu.brightness(frame, effect.value);
+              } else if (type === 'contrast' && typeof effect.value === 'number') {
+                frame = gpu.contrast(frame, effect.value);
+              } else if (type === 'saturation' && typeof effect.value === 'number') {
+                frame = gpu.saturation(frame, effect.value);
+              } else if (type === 'blur' && typeof effect.value === 'number') {
+                frame = gpu.blur(frame, effect.value);
+              } else if (type === 'grayscale') {
+                frame = gpu.grayscale(frame);
+              } else if (type === 'sepia') {
+                frame = gpu.sepia(frame);
+              }
+            } catch (e) {
+              console.warn('Composition effect error:', e);
+            }
+          });
+
+          // Put processed frame back to canvas
+          ctx.putImageData(frame, 0, 0);
+
+          // Apply simple visual transitions (fade to/from black)
+          timelineEffects.forEach(effect => {
+            if (!effect || currentTime < effect.start || currentTime > effect.end) return;
+            const type = String(effect.type || '');
+            if (type.startsWith('transition-')) {
+              const sub = type.split('transition-')[1] || 'fade';
+              const dur = Math.max(0.001, effect.end - effect.start);
+              const rel = (currentTime - effect.start) / dur;
+              if (sub === 'fade') {
+                // fade to black in middle of transition
+                ctx.save();
+                ctx.fillStyle = '#000';
+                ctx.globalAlpha = 1 - Math.abs(0.5 - rel) * 2; // peak at center
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.restore();
+              } else if (sub === 'blur') {
+                try {
+                  // gentle blur blend by drawing slightly blurred image on top
+                  const blurred = gpu.blur(ctx.getImageData(0, 0, canvas.width, canvas.height), Math.min(8, 10 * (1 - Math.abs(0.5 - rel) * 2)));
+                  ctx.putImageData(blurred, 0, 0);
+                } catch (e) { /* ignore */ }
+              }
+            }
+          });
+        } catch (err) {
+          console.warn('applyCompositionEffects error', err);
+        }
+      }
 
       function render() {
         if (!isPlayingComposition) return;
@@ -608,6 +768,8 @@
         }
 
         mediaComposer.renderFrame(elapsed);
+        setCompareOriginalFromCanvas();
+        renderTextOverlays(elapsed);
         const position = (elapsed / totalDuration) * 100;
         document.getElementById('playhead').style.left = `calc(60px + ${position}%)`;
 
@@ -620,6 +782,11 @@
     function stopComposition() {
       isPlayingComposition = false;
       if (compositionPlaybackId) cancelAnimationFrame(compositionPlaybackId);
+      if (mediaComposer) mediaComposer.stopPlayback();
+      if (playingAudio) {
+        playingAudio.pause();
+        playingAudio = null;
+      }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       console.log('⏹ Playback stopped');
     }
@@ -636,6 +803,14 @@
         try {
           console.log('📹 Adding video:', file.name);
           await mediaComposer.addVideo(file, 0);
+          
+          // Set the src of the preview video element so it displays the video!
+          const url = URL.createObjectURL(file);
+          video.src = url;
+          video.muted = true;
+          video.loop = true;
+          video.play().catch(err => console.log('Autoplay prevented:', err));
+          
           renderTimeline();
           updateMediaLibrary();
           console.log('✅ Video added successfully');
@@ -709,20 +884,18 @@
       }
     }
 
-    // ===== TEXT =====
-    function addTextOverlay() {
-      const text = document.getElementById('textContent').value.trim();
-      if (!text) return;
-      textOverlays.push({
-        id: Date.now(),
-        content: text,
-        start: parseFloat(document.getElementById('textStart').value)
-      });
-      document.getElementById('textContent').value = '';
-      document.getElementById('textStatus').textContent = '✅ Text added';
-    }
-
     function addPresetEffect(name) {
+      const preset = effectPresets[name];
+      if (!preset) return;
+      Object.entries(preset).forEach(([type, value]) => {
+        timelineEffects.push({
+          type,
+          start: 0,
+          end: Math.min(mediaComposer?.getTotalDuration() || 10, 10),
+          value,
+          id: Date.now() + Math.random()
+        });
+      });
       console.log('Applied preset:', name);
     }
 
@@ -756,8 +929,36 @@
         return;
       }
       recordedChunks = [];
+      exportAudioElements.forEach(audio => audio.pause());
+      exportAudioElements = [];
+      if (exportAudioContext) {
+        exportAudioContext.close();
+        exportAudioContext = null;
+      }
+
       const stream = canvas.captureStream(30);
-      mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+
+      if (audioTracks.length > 0) {
+        exportAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const destination = exportAudioContext.createMediaStreamDestination();
+
+        audioTracks.forEach(track => {
+          const audio = new Audio(track.url);
+          audio.volume = track.vol;
+          audio.currentTime = track.start || 0;
+          const source = exportAudioContext.createMediaElementSource(audio);
+          source.connect(destination);
+          exportAudioElements.push(audio);
+          audio.play();
+        });
+
+        destination.stream.getAudioTracks().forEach(track => stream.addTrack(track));
+      }
+
+      const options = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+        ? { mimeType: 'video/webm;codecs=vp9,opus' }
+        : { mimeType: 'video/webm' };
+      mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
       mediaRecorder.start();
       document.getElementById('exportStartBtn').disabled = true;
@@ -769,8 +970,16 @@
     }
 
     function stopExport() {
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
       mediaRecorder.stop();
       mediaRecorder.onstop = () => {
+        exportAudioElements.forEach(audio => audio.pause());
+        exportAudioElements = [];
+        if (exportAudioContext) {
+          exportAudioContext.close();
+          exportAudioContext = null;
+        }
+
         const blob = new Blob(recordedChunks, { type: 'video/webm' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
@@ -785,54 +994,444 @@
       };
     }
 
+    let availableEnhancements = [];
+let lastEnhancedUrl = null;
+let isEnhancing = false;
+ 
+// ===== LOAD ENHANCEMENT OPTIONS ON PAGE LOAD =====
+async function loadEnhancementOptions() {
+  try {
+    const response = await fetch('http://localhost:3001/api/ai/enhancement-options', {
+      headers: auth.getAuthHeaders()
+    });
+ 
+    if (!response.ok) {
+      console.error('Failed to load enhancement options');
+      return;
+    }
+ 
+    const data = await response.json();
+    availableEnhancements = data.types;
+    renderEnhancementUI();
+  } catch (error) {
+    console.error('Error loading enhancements:', error);
+  }
+}
+ 
+// ===== RENDER ENHANCEMENT UI IN AI TAB =====
+function renderEnhancementUI() {
+  const aiTab = document.getElementById('ai-tab'); // Adjust selector if needed
+  if (!aiTab) return;
+ 
+  let html = `
+    <div class="sidebar-section">
+      <h3>🎬 Video Enhancement</h3>
+      <p style="font-size: 0.75em; color: #06d6d9; margin-bottom: 10px;">
+        Use AI to enhance your video with professional effects
+      </p>
+  `;
+ 
+  availableEnhancements.forEach(enhancement => {
+    html += `
+      <div style="margin-bottom: 12px; padding: 10px; background: rgba(157, 78, 221, 0.1); border-radius: 6px; border-left: 3px solid #9d4edd;">
+        <div style="font-size: 0.85em; font-weight: 600; color: #aef7ff; margin-bottom: 4px;">
+          ${enhancement.name}
+        </div>
+        <div style="font-size: 0.75em; color: #06d6d9; margin-bottom: 8px;">
+          ${enhancement.description}
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span style="font-size: 0.7em; color: #ff006e; font-weight: 600;">
+            💎 ${enhancement.tokens_cost} tokens
+          </span>
+          <button 
+            onclick="enhanceVideoWithType('${enhancement.id}')"
+            style="
+              flex: 1;
+              padding: 6px 10px;
+              font-size: 0.75em;
+              background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
+              border: none;
+              color: white;
+              border-radius: 4px;
+              cursor: pointer;
+              font-weight: 600;
+              transition: all 0.2s;
+            "
+            onmouseover="this.style.boxShadow='0 0 15px rgba(157, 78, 221, 0.5)'"
+            onmouseout="this.style.boxShadow='none'"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    `;
+  });
+ 
+  html += `
+    <div class="divider"></div>
+    <h3>📊 Enhancement History</h3>
+    <div id="enhancement-history" style="max-height: 150px; overflow-y: auto;">
+      <p style="font-size: 0.75em; color: #aef7ff;">Loading...</p>
+    </div>
+  </div>
+  `;
+ 
+  aiTab.innerHTML = html;
+  loadEnhancementHistory();
+}
+ 
+// ===== ENHANCE VIDEO WITH SELECTED TYPE =====
+async function enhanceVideoWithType(enhancementType) {
+  // Check if a video is loaded
+  if (!canvas || canvas.width === 0) {
+    alert('⚠️ Please load a video first');
+    return;
+  }
+ 
+  // Check if media composer has items
+  if (!mediaComposer || mediaComposer.items.length === 0) {
+    alert('⚠️ Please add media to the timeline first');
+    return;
+  }
+ 
+  if (isEnhancing) {
+    alert('⏳ Enhancement already in progress...');
+    return;
+  }
+ 
+  try {
+    isEnhancing = true;
+    
+    // Show status message
+    const statusDiv = document.createElement('div');
+    statusDiv.id = 'enhancement-status';
+    statusDiv.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
+      color: white;
+      padding: 20px 30px;
+      border-radius: 10px;
+      z-index: 10000;
+      box-shadow: 0 0 30px rgba(157, 78, 221, 0.8);
+      text-align: center;
+      font-weight: 600;
+    `;
+    statusDiv.innerHTML = `
+      🎬 Enhancing your video...<br>
+      <span style="font-size: 0.9em; margin-top: 10px; display: block;">
+        Enhancement: <strong>${enhancementType}</strong>
+      </span>
+    `;
+    document.body.appendChild(statusDiv);
+ 
+    // Export current composition as blob URL
+    const videoUrl = await exportCompositionAsUrl();
+ 
+    // Call backend enhancement API
+    const response = await fetch('http://localhost:3001/api/ai/enhance', {
+      method: 'POST',
+      headers: auth.getAuthHeaders(),
+      body: JSON.stringify({
+        videoUrl: videoUrl,
+        enhancementType: enhancementType
+      })
+    });
+ 
+    const data = await response.json();
+ 
+    statusDiv.remove();
+ 
+    if (!response.ok) {
+      alert(`❌ Enhancement failed: ${data.error}`);
+      console.error('Enhancement error:', data);
+      return;
+    }
+ 
+    // Success!
+    lastEnhancedUrl = data.enhanced_video_url;
+ 
+    // Show success message with details
+    const successDiv = document.createElement('div');
+    successDiv.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(135deg, #06d6d9 0%, #06b6d4 100%);
+      color: white;
+      padding: 20px 30px;
+      border-radius: 10px;
+      z-index: 10000;
+      box-shadow: 0 0 30px rgba(6, 214, 217, 0.8);
+      text-align: center;
+      font-weight: 600;
+    `;
+    successDiv.innerHTML = `
+      ✅ Enhancement Complete!<br>
+      <span style="font-size: 0.85em; margin-top: 10px; display: block;">
+        Tokens Used: <strong>${data.tokens_used}</strong><br>
+        Remaining: <strong>${data.tokens_remaining}</strong><br>
+        Processing Time: <strong>${(data.processing_time_ms / 1000).toFixed(2)}s</strong>
+      </span>
+      <button onclick="downloadEnhancedVideo()" style="
+        margin-top: 15px;
+        padding: 8px 16px;
+        background: rgba(255, 255, 255, 0.3);
+        border: 1px solid white;
+        color: white;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+      ">
+        📥 Download Enhanced Video
+      </button>
+    `;
+    document.body.appendChild(successDiv);
+ 
+    setTimeout(() => successDiv.remove(), 8000);
+    loadEnhancementHistory();
+ 
+  } catch (error) {
+    console.error('Enhancement error:', error);
+    alert(`❌ Error: ${error.message}`);
+  } finally {
+    isEnhancing = false;
+  }
+}
+ 
+// ===== EXPORT COMPOSITION AS URL FOR ENHANCEMENT =====
+async function exportCompositionAsUrl() {
+  return new Promise((resolve) => {
+    const chunks = [];
+ 
+    const canvas2d = canvas.getContext('2d');
+    const videoTracks = [];
+    const audioTracks = [];
+ 
+    // Get MediaRecorder stream from canvas
+    const stream = canvas.captureStream(30); // 30 FPS
+ 
+    const mimeType = 'video/webm;codecs=vp9';
+    const mediaRecorder = new MediaRecorder(stream, { mimeType });
+ 
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    };
+ 
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(chunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      resolve(url);
+    };
+ 
+    // Record the composition
+    const totalDuration = mediaComposer.items.length > 0 
+      ? Math.max(...mediaComposer.items.map(item => (item.start || 0) + (item.duration || 0)))
+      : 10;
+ 
+    mediaRecorder.start();
+ 
+    let startTime = Date.now();
+    let frameCount = 0;
+ 
+    function renderFrame() {
+      const elapsed = (Date.now() - startTime) / 1000;
+ 
+      if (elapsed >= totalDuration) {
+        mediaRecorder.stop();
+        return;
+      }
+ 
+      // Render current frame
+      if (mediaComposer && typeof mediaComposer.renderFrame === 'function') {
+        mediaComposer.renderFrame(elapsed);
+
+        // Audio preview sync: start/pause audio based on its configured start time
+        if (previewAudioEl && audioTrack) {
+          const audioStart = Number.isFinite(audioTrack.start) ? audioTrack.start : 0;
+          if (elapsed >= audioStart) {
+            if (previewAudioEl.paused) {
+              try {
+                previewAudioEl.currentTime = Math.max(0, elapsed - audioStart);
+                previewAudioEl.play().catch(() => {});
+              } catch (e) { /* ignore play errors */ }
+            }
+          } else {
+            if (!previewAudioEl.paused) previewAudioEl.pause();
+          }
+        }
+
+        // Apply any GPU-backed timeline effects or simple transitions
+        applyCompositionEffects(elapsed);
+
+        setCompareOriginalFromCanvas();
+        renderTextOverlays(elapsed);
+      requestAnimationFrame(renderFrame);
+    }
+ 
+    renderFrame();
+
+  }});
+}
+ 
+// ===== DOWNLOAD ENHANCED VIDEO =====
+async function downloadEnhancedVideo() {
+  if (!lastEnhancedUrl) {
+    alert('No enhanced video available');
+    return;
+  }
+ 
+  try {
+    // Fetch the enhanced video
+    const response = await fetch(lastEnhancedUrl);
+    const blob = await response.blob();
+ 
+    // Create download link
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `enhanced-video-${Date.now()}.mp4`;
+    link.click();
+ 
+    URL.revokeObjectURL(link.href);
+  } catch (error) {
+    console.error('Download error:', error);
+    alert(`Failed to download: ${error.message}`);
+  }
+}
+ 
+// ===== LOAD ENHANCEMENT HISTORY =====
+async function loadEnhancementHistory() {
+  try {
+    const response = await fetch('http://localhost:3001/api/ai/enhancement-history', {
+      headers: auth.getAuthHeaders()
+    });
+ 
+    if (!response.ok) return;
+ 
+    const data = await response.json();
+    const historyDiv = document.getElementById('enhancement-history');
+ 
+    if (!historyDiv) return;
+ 
+    if (!data.enhancements || data.enhancements.length === 0) {
+      historyDiv.innerHTML = '<p style="font-size: 0.75em; color: #aef7ff;">No enhancements yet</p>';
+      return;
+    }
+ 
+    let html = '';
+    data.enhancements.slice(0, 10).forEach(item => {
+      const date = new Date(item.created_at).toLocaleDateString();
+      html += `
+        <div style="padding: 8px; background: rgba(157, 78, 221, 0.1); margin-bottom: 6px; border-radius: 4px; font-size: 0.7em;">
+          <div style="color: #9d4edd; font-weight: 600;">${item.enhancement_type || 'Unknown'}</div>
+          <div style="color: #06d6d9;">🎯 ${item.tokens_used} tokens • ${date}</div>
+        </div>
+      `;
+    });
+ 
+    historyDiv.innerHTML = html;
+  } catch (error) {
+    console.error('Error loading history:', error);
+  }
+}
+
     // ===== COMPARE MODE (Before/After Slider) =====
     let showCompareMode = false;
     let comparePosition = 50;
+    let compareDragActive = false;
+    let compareSliderBound = false;
 
     function toggleCompare() {
       showCompareMode = !showCompareMode;
       const btn = document.getElementById('compareBtn');
       const slider = document.getElementById('compareSlider');
+      if (!btn || !slider) return;
       
       if (showCompareMode) {
+        if (originalFrame) setCompareOriginalFromFrame(originalFrame);
+        compareOriginalCanvas.style.opacity = '1';
         btn.style.background = 'linear-gradient(135deg, #06b6d4 0%, #06d6d9 100%)';
         btn.style.color = 'white';
         btn.style.boxShadow = '0 0 20px rgba(6, 214, 217, 0.6)';
         slider.style.display = 'block';
-        renderCompareSlider();
+        syncCompareSlider();
+        bindCompareSlider();
       } else {
         btn.style.background = 'linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(6, 214, 217, 0.3) 100%)';
         slider.style.display = 'none';
+        compareOriginalCanvas.style.opacity = '0';
+        compareDragActive = false;
       }
     }
 
-    function renderCompareSlider() {
+    function syncCompareSlider() {
       const slider = document.getElementById('compareSlider');
+      if (!slider) return;
       const handle = slider.querySelector('.compare-slider-handle');
-      const container = document.getElementById('outputContainer');
-      
-      slider.style.left = comparePosition + '%';
-      handle.style.left = '-2px';
-      
-      let isDragging = false;
-      handle.addEventListener('mousedown', () => { isDragging = true; });
-      document.addEventListener('mouseup', () => { isDragging = false; });
-      
-      document.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
+      if (!handle) return;
+
+      compareOriginalCanvas.style.clipPath = `inset(0 ${100 - comparePosition}% 0 0)`;
+      handle.style.left = comparePosition + '%';
+    }
+
+    function bindCompareSlider() {
+      if (compareSliderBound) return;
+
+      const slider = document.getElementById('compareSlider');
+      if (!slider) return;
+      const handle = slider.querySelector('.compare-slider-handle');
+      const container = slider.parentElement;
+      if (!handle || !container) return;
+
+      const updateComparePosition = (clientX) => {
         const rect = container.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const newPosition = (x / rect.width) * 100;
-        if (newPosition >= 0 && newPosition <= 100) {
-          comparePosition = newPosition;
-          slider.style.left = newPosition + '%';
-        }
+        if (!rect.width) return;
+
+        const x = clientX - rect.left;
+        comparePosition = Math.max(0, Math.min((x / rect.width) * 100, 100));
+        syncCompareSlider();
+      };
+
+      const startDrag = (e) => {
+        compareDragActive = true;
+        updateComparePosition(e.clientX);
+      };
+
+      const stopDrag = () => {
+        compareDragActive = false;
+      };
+
+      const moveDrag = (e) => {
+        if (!compareDragActive || !showCompareMode) return;
+        updateComparePosition(e.clientX);
+      };
+
+      handle.addEventListener('pointerdown', (e) => {
+        startDrag(e);
+        handle.setPointerCapture?.(e.pointerId);
       });
+
+      slider.addEventListener('pointerdown', startDrag);
+      document.addEventListener('pointerup', stopDrag);
+      document.addEventListener('pointermove', moveDrag);
+
+      document.addEventListener('mouseup', stopDrag);
+      document.addEventListener('mousemove', moveDrag);
+
+      compareSliderBound = true;
     }
 
     // Initialize
     window.addEventListener('load', () => {
+      initRangeSliderLabels();
       renderTimeline();
+      loadEnhancementOptions();
     });
   </script>
 </body>

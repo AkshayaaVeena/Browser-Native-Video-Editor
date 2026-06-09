@@ -10,6 +10,7 @@ class MediaComposer {
     this.selectedItem = null;
     this.compositionMode = 'sequential';
     this.lastSeekTimes = {}; // Track last seek time per item to avoid excessive seeking
+    this.activeVideoIds = new Set();
   }
 
   // Add video to composition with proper cleanup
@@ -61,8 +62,8 @@ class MediaComposer {
   addImage(file, startTime = 0, duration = 5) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      
-      const handleReaderLoad = (e) => {
+
+      const handleReaderLoad = () => {
         const img = new Image();
         const url = URL.createObjectURL(file);
         
@@ -98,7 +99,7 @@ class MediaComposer {
 
         img.addEventListener('load', handleImageLoad, { once: true });
         img.addEventListener('error', handleImageError, { once: true });
-        img.src = URL.createObjectURL(file);
+        img.src = url;
       };
 
       const handleReaderError = () => {
@@ -123,6 +124,7 @@ class MediaComposer {
         item.video.load();
       }
       delete this.lastSeekTimes[id];
+      this.activeVideoIds.delete(id);
       this.items.splice(index, 1);
       if (this.selectedItem === id) this.selectedItem = null;
       return true;
@@ -153,22 +155,124 @@ class MediaComposer {
 
   // Main render method
   renderFrame(currentTime) {
+    if (!this.hasDrawableMediaAt(currentTime)) {
+      this.activateVideosAt(currentTime);
+      return false;
+    }
+
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.fillStyle = '#000000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+    let drewFrame = false;
+
     if (this.compositionMode === 'sequential') {
-      this.renderSequential(currentTime);
+      drewFrame = this.renderSequential(currentTime);
     } else if (this.compositionMode === 'overlay') {
-      this.renderOverlay(currentTime);
+      drewFrame = this.renderOverlay(currentTime);
     } else if (this.compositionMode === 'split') {
-      this.renderSplit(currentTime);
+      drewFrame = this.renderSplit(currentTime);
     }
+
+    return drewFrame;
+  }
+
+  activateVideosAt(currentTime) {
+    if (this.compositionMode === 'sequential') {
+      let timeOffset = 0;
+      for (const item of this.items) {
+        const itemStartTime = timeOffset;
+        const itemEndTime = timeOffset + item.duration;
+        if (currentTime >= itemStartTime && currentTime < itemEndTime && item.type === 'video') {
+          const itemTime = currentTime - itemStartTime;
+          this.syncVideoForPlayback(item, itemTime * (item.properties.speed || 1));
+        }
+        timeOffset = itemEndTime;
+      }
+      return;
+    }
+
+    this.items.forEach(item => {
+      if (item.type !== 'video' || !this.isItemActive(item, currentTime)) return;
+      const itemTime = currentTime - item.startTime;
+      this.syncVideoForPlayback(item, itemTime * (item.properties.speed || 1));
+    });
+  }
+
+  hasDrawableMediaAt(currentTime) {
+    return this.items.some(item => {
+      if (!this.isItemActive(item, currentTime)) return false;
+      if (item.type === 'image') return item.element && item.element.complete;
+      return item.element && item.element.readyState >= 2;
+    });
+  }
+
+  isItemActive(item, currentTime) {
+    if (this.compositionMode !== 'sequential') {
+      return currentTime >= item.startTime && currentTime < item.startTime + item.duration;
+    }
+
+    let timeOffset = 0;
+    for (const candidate of this.items) {
+      const itemStartTime = timeOffset;
+      const itemEndTime = timeOffset + candidate.duration;
+      if (candidate.id === item.id) {
+        return currentTime >= itemStartTime && currentTime < itemEndTime;
+      }
+      timeOffset = itemEndTime;
+    }
+
+    return false;
+  }
+
+  syncVideoForPlayback(item, targetTime) {
+    const video = item.element;
+    if (!video) return;
+
+    video.muted = true;
+    video.playsInline = true;
+    video.playbackRate = item.properties.speed || 1;
+
+    const wasInactive = !this.activeVideoIds.has(item.id);
+    const drift = Math.abs(video.currentTime - targetTime);
+
+    if (wasInactive || drift > 0.5) {
+      video.currentTime = targetTime;
+      this.lastSeekTimes[item.id] = targetTime;
+    }
+
+    this.activeVideoIds.add(item.id);
+
+    if (video.paused) {
+      const playPromise = video.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+      }
+    }
+  }
+
+  pauseInactiveVideos(activeIds) {
+    this.items.forEach(item => {
+      if (item.type !== 'video' || !item.element || activeIds.has(item.id)) return;
+      item.element.pause();
+      this.activeVideoIds.delete(item.id);
+    });
+  }
+
+  stopPlayback() {
+    this.items.forEach(item => {
+      if (item.type === 'video' && item.element) {
+        item.element.pause();
+      }
+    });
+    this.activeVideoIds.clear();
   }
 
   // Sequential mode: videos play one after another
   renderSequential(currentTime) {
     let timeOffset = 0;
+    let drewFrame = false;
+    const activeIds = new Set();
 
     for (const item of this.items) {
       const itemStartTime = timeOffset;
@@ -178,42 +282,42 @@ class MediaComposer {
         const itemTime = currentTime - itemStartTime;
         
         if (item.type === 'video' && item.element) {
-          // OPTIMIZATION: Only seek if difference is significant (>150ms)
           const targetTime = itemTime * (item.properties.speed || 1);
-          const lastSeek = this.lastSeekTimes[item.id] || -999;
-          
-          if (Math.abs(item.element.currentTime - targetTime) > 0.15) {
-            item.element.currentTime = targetTime;
-            this.lastSeekTimes[item.id] = targetTime;
-          }
-          this.drawMedia(item, itemTime);
+          activeIds.add(item.id);
+          this.syncVideoForPlayback(item, targetTime);
+          drewFrame = this.drawMedia(item, itemTime) || drewFrame;
         } else if (item.type === 'image' && item.element) {
-          this.drawMedia(item, itemTime);
+          drewFrame = this.drawMedia(item, itemTime) || drewFrame;
         }
       }
       timeOffset = itemEndTime;
     }
+
+    this.pauseInactiveVideos(activeIds);
+    return drewFrame;
   }
 
   // Overlay mode: all items play simultaneously
   renderOverlay(currentTime) {
     const sortedItems = [...this.items].sort((a, b) => a.startTime - b.startTime);
+    let drewFrame = false;
+    const activeIds = new Set();
 
     for (const item of sortedItems) {
       if (currentTime >= item.startTime && currentTime < item.startTime + item.duration) {
         const itemTime = currentTime - item.startTime;
         
         if (item.type === 'video' && item.element) {
-          // OPTIMIZATION: Only seek if difference is significant
           const targetTime = itemTime * (item.properties.speed || 1);
-          if (Math.abs(item.element.currentTime - targetTime) > 0.15) {
-            item.element.currentTime = targetTime;
-            this.lastSeekTimes[item.id] = targetTime;
-          }
+          activeIds.add(item.id);
+          this.syncVideoForPlayback(item, targetTime);
         }
-        this.drawMedia(item, itemTime);
+        drewFrame = this.drawMedia(item, itemTime) || drewFrame;
       }
     }
+
+    this.pauseInactiveVideos(activeIds);
+    return drewFrame;
   }
 
   // Split mode: grid layout
@@ -224,6 +328,8 @@ class MediaComposer {
     const rows = Math.ceil(this.items.length / cols);
     const cellWidth = this.canvas.width / cols;
     const cellHeight = this.canvas.height / rows;
+    let drewFrame = false;
+    const activeIds = new Set();
 
     this.items.forEach((item, index) => {
       if (currentTime >= item.startTime && currentTime < item.startTime + item.duration) {
@@ -231,10 +337,8 @@ class MediaComposer {
         
         if (item.type === 'video' && item.element) {
           const targetTime = itemTime * (item.properties.speed || 1);
-          if (Math.abs(item.element.currentTime - targetTime) > 0.15) {
-            item.element.currentTime = targetTime;
-            this.lastSeekTimes[item.id] = targetTime;
-          }
+          activeIds.add(item.id);
+          this.syncVideoForPlayback(item, targetTime);
         }
 
         const row = Math.floor(index / cols);
@@ -252,7 +356,7 @@ class MediaComposer {
         item.properties.x = gridX + prevX;
         item.properties.y = gridY + prevY;
         
-        this.drawMedia(item, itemTime);
+        drewFrame = this.drawMedia(item, itemTime) || drewFrame;
         
         item.properties.x = prevX;
         item.properties.y = prevY;
@@ -263,11 +367,14 @@ class MediaComposer {
         this.ctx.strokeRect(gridX, gridY, cellWidth, cellHeight);
       }
     });
+
+    this.pauseInactiveVideos(activeIds);
+    return drewFrame;
   }
 
   // Draw media with transformations
   drawMedia(item, time) {
-    if (!item || !item.element) return;
+    if (!item || !item.element) return false;
     
     const props = item.properties;
     this.ctx.save();
@@ -298,6 +405,8 @@ class MediaComposer {
       
       try {
         this.ctx.drawImage(item.element, x, y, displayWidth, displayHeight);
+        this.ctx.restore();
+        return true;
       } catch (e) {
         console.warn('Draw error:', e);
       }
@@ -315,12 +424,15 @@ class MediaComposer {
       
       try {
         this.ctx.drawImage(item.element, x, y, displayWidth, displayHeight);
+        this.ctx.restore();
+        return true;
       } catch (e) {
         console.warn('Draw error:', e);
       }
     }
 
     this.ctx.restore();
+    return false;
   }
 
   // Set composition mode
@@ -382,6 +494,7 @@ class MediaComposer {
     this.mediaItems = this.items;
     this.selectedItem = null;
     this.lastSeekTimes = {};
+    this.activeVideoIds.clear();
     console.log('✅ All media cleared');
   }
 
