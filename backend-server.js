@@ -3,6 +3,7 @@ const app = express();
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
 
 require('dotenv').config(); // Load environment variables from a .env file
 
@@ -11,6 +12,7 @@ if (!process.env.JWT_SECRET) {
   process.exit(1); // Crash immediately in production if insecure
 }
 const JWT_SECRET = process.env.JWT_SECRET;
+const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS || 10);
 
 // Capture raw body for debugging JSON parse errors
 app.use(express.json({
@@ -81,8 +83,23 @@ app.get('/', (req, res) => {
 
 app.use(express.static(__dirname));
 
-const bcrypt = require('bcrypt');
-const saltRounds = 10;
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function normalizeUsername(username) {
+  return String(username || '').trim();
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function getBearerToken(req) {
+  const header = req.headers.authorization || '';
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : '';
+}
 
 // Correctly returning a promise-based string hash
 async function hashPassword(password) {
@@ -105,10 +122,20 @@ function signAuthToken(user) {
 
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const username = normalizeUsername(req.body.username);
+    const email = normalizeEmail(req.body.email);
+    const { password } = req.body;
 
     if (!username || !email || !password) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'Enter a valid email address' });
+    }
+
+    if (username.length < 3 || username.length > 32) {
+      return res.status(400).json({ error: 'Username must be 3 to 32 characters' });
     }
 
     if (password.length < 8) {
@@ -117,7 +144,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     // Check if user exists
     db.get('SELECT id FROM users WHERE email = ?', [email], async (err, row) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: 'Unable to check account availability' });
       
       if (row) {
         return res.status(409).json({ error: 'Email already registered' });
@@ -136,7 +163,7 @@ app.post('/api/auth/register', async (req, res) => {
               if (err.message.includes('UNIQUE')) {
                 return res.status(409).json({ error: 'Username already taken' });
               }
-              return res.status(500).json({ error: err.message });
+              return res.status(500).json({ error: 'Unable to create account' });
             }
 
             const token = signAuthToken({ id: this.lastID, email, username });
@@ -160,14 +187,15 @@ app.post('/api/auth/register', async (req, res) => {
 // Login endpoint
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const { password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password required' });
     }
 
     db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: 'Unable to load account' });
 
       if (!user) {
         return res.status(401).json({ error: 'Invalid email or password' });
@@ -195,7 +223,7 @@ app.post('/api/auth/login', async (req, res) => {
 // Validate token endpoint
 app.post('/api/auth/validate', (req, res) => {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
+    const token = getBearerToken(req);
 
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });
@@ -212,7 +240,7 @@ app.post('/api/auth/validate', (req, res) => {
 // Get user profile
 app.get('/api/auth/profile', (req, res) => {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '');
+    const token = getBearerToken(req);
 
     if (!token) {
       return res.status(401).json({ error: 'No token provided' });
@@ -221,7 +249,7 @@ app.get('/api/auth/profile', (req, res) => {
     const decoded = jwt.verify(token, JWT_SECRET);
 
     db.get('SELECT id, email, username, created_at FROM users WHERE id = ?', [decoded.id], (err, user) => {
-      if (err) return res.status(500).json({ error: err.message });
+      if (err) return res.status(500).json({ error: 'Unable to load profile' });
       if (!user) return res.status(404).json({ error: 'User not found' });
 
       res.json({ success: true, user });
@@ -239,4 +267,8 @@ app.post('/api/auth/logout', (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
+}
+
+module.exports = { app, db };

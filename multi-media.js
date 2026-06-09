@@ -20,6 +20,7 @@ class MediaComposer {
       const video = document.createElement('video');
       
       const handleMetadata = () => {
+        const sourceDuration = Number.isFinite(video.duration) ? video.duration : 0;
         const item = {
           id: `video-${Date.now()}-${Math.random()}`,
           type: 'video',
@@ -28,7 +29,9 @@ class MediaComposer {
           element: video,
           video: video,
           startTime: startTime,
-          duration: video.duration,
+          duration: sourceDuration,
+          sourceDuration,
+          trimStart: 0,
           properties: {
             opacity: 1,
             scale: 1,
@@ -74,6 +77,8 @@ class MediaComposer {
           image: img,
           startTime: startTime,
           duration: duration,
+          sourceDuration: duration,
+          trimStart: 0,
           properties: {
             opacity: 1,
             scale: 1,
@@ -130,15 +135,128 @@ class MediaComposer {
     return false;
   }
 
+  getTimelineEnd() {
+    if (this.items.length === 0) return 0;
+    return Math.max(...this.items.map(item => item.startTime + item.duration));
+  }
+
   // Get total composition duration
   getTotalDuration() {
     if (this.items.length === 0) return 0;
-    
+
     if (this.compositionMode === 'sequential') {
       return this.items.reduce((sum, item) => sum + item.duration, 0);
-    } else {
-      return Math.max(...this.items.map(item => item.startTime + item.duration));
     }
+
+    return this.getTimelineEnd();
+  }
+
+  getItemById(id) {
+    return this.items.find(item => item.id === id) || null;
+  }
+
+  getSortedItems() {
+    return [...this.items].sort((a, b) => a.startTime - b.startTime);
+  }
+
+  getAdjacentPairs(gapTolerance = 0.05) {
+    const sorted = this.getSortedItems();
+    const pairs = [];
+
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const from = sorted[i];
+      const to = sorted[i + 1];
+      const boundary = from.startTime + from.duration;
+      if (Math.abs(to.startTime - boundary) <= gapTolerance) {
+        pairs.push({ from, to, boundary });
+      }
+    }
+
+    return pairs;
+  }
+
+  renderOnlyItem(item, compositionTime, targetCtx = this.ctx) {
+    if (!item || !targetCtx) return false;
+
+    targetCtx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    targetCtx.fillStyle = '#000000';
+    targetCtx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    const itemTime = Math.max(0, Math.min(compositionTime - item.startTime, item.duration - 0.001));
+
+    if (item.type === 'video' && item.element) {
+      this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
+    }
+
+    const savedCtx = this.ctx;
+    this.ctx = targetCtx;
+    const drew = this.drawMedia(item, itemTime);
+    this.ctx = savedCtx;
+    return drew;
+  }
+
+  moveItem(id, newStartTime) {
+    const item = this.getItemById(id);
+    if (!item) return false;
+    item.startTime = Math.max(0, newStartTime);
+    if (this.compositionMode === 'sequential') {
+      this.compositionMode = 'overlay';
+    }
+    return true;
+  }
+
+  trimItemStart(id, deltaSeconds) {
+    const item = this.getItemById(id);
+    if (!item || !Number.isFinite(deltaSeconds)) return false;
+
+    const minDuration = 0.1;
+    const maxTrim = Math.max(0, item.duration - minDuration);
+    const appliedDelta = Math.max(-item.trimStart, Math.min(deltaSeconds, maxTrim));
+
+    if (appliedDelta === 0) return false;
+
+    item.trimStart = (item.trimStart || 0) + appliedDelta;
+    item.startTime = Math.max(0, item.startTime + appliedDelta);
+    item.duration = Math.max(minDuration, item.duration - appliedDelta);
+
+    if (item.type === 'video' && item.sourceDuration) {
+      const maxTrimStart = Math.max(0, item.sourceDuration - minDuration);
+      item.trimStart = Math.min(item.trimStart, maxTrimStart);
+    }
+
+    if (this.compositionMode === 'sequential') {
+      this.compositionMode = 'overlay';
+    }
+    return true;
+  }
+
+  trimItemEnd(id, deltaSeconds) {
+    const item = this.getItemById(id);
+    if (!item || !Number.isFinite(deltaSeconds)) return false;
+
+    const minDuration = 0.1;
+    const maxDelta = item.duration - minDuration;
+    const appliedDelta = Math.max(-maxDelta, Math.min(deltaSeconds, maxDelta));
+
+    if (appliedDelta === 0) return false;
+
+    item.duration = Math.max(minDuration, item.duration - appliedDelta);
+
+    if (item.type === 'video' && item.sourceDuration) {
+      const trimEnd = (item.trimStart || 0) + item.duration;
+      if (trimEnd > item.sourceDuration) {
+        item.duration = Math.max(minDuration, item.sourceDuration - (item.trimStart || 0));
+      }
+    }
+
+    if (this.compositionMode === 'sequential') {
+      this.compositionMode = 'overlay';
+    }
+    return true;
+  }
+
+  getSourceTime(item, timelineOffset) {
+    return (item.trimStart || 0) + timelineOffset * (item.properties.speed || 1);
   }
 
   // Main render method
@@ -173,7 +291,7 @@ class MediaComposer {
         const itemEndTime = timeOffset + item.duration;
         if (currentTime >= itemStartTime && currentTime < itemEndTime && item.type === 'video') {
           const itemTime = currentTime - itemStartTime;
-          this.syncVideoForPlayback(item, itemTime * (item.properties.speed || 1));
+          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
         }
         timeOffset = itemEndTime;
       }
@@ -183,7 +301,7 @@ class MediaComposer {
     this.items.forEach(item => {
       if (item.type !== 'video' || !this.isItemActive(item, currentTime)) return;
       const itemTime = currentTime - item.startTime;
-      this.syncVideoForPlayback(item, itemTime * (item.properties.speed || 1));
+      this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
     });
   }
 
@@ -270,7 +388,7 @@ class MediaComposer {
         const itemTime = currentTime - itemStartTime;
         
         if (item.type === 'video' && item.element) {
-          const targetTime = itemTime * (item.properties.speed || 1);
+          const targetTime = this.getSourceTime(item, itemTime);
           activeIds.add(item.id);
           this.syncVideoForPlayback(item, targetTime);
           drewFrame = this.drawMedia(item, itemTime) || drewFrame;
@@ -296,7 +414,7 @@ class MediaComposer {
         const itemTime = currentTime - item.startTime;
         
         if (item.type === 'video' && item.element) {
-          const targetTime = itemTime * (item.properties.speed || 1);
+          const targetTime = this.getSourceTime(item, itemTime);
           activeIds.add(item.id);
           this.syncVideoForPlayback(item, targetTime);
         }
@@ -324,7 +442,7 @@ class MediaComposer {
         const itemTime = currentTime - item.startTime;
         
         if (item.type === 'video' && item.element) {
-          const targetTime = itemTime * (item.properties.speed || 1);
+          const targetTime = this.getSourceTime(item, itemTime);
           activeIds.add(item.id);
           this.syncVideoForPlayback(item, targetTime);
         }

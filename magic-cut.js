@@ -5,35 +5,45 @@ class MagicCut {
     this.ctx = canvas.getContext('2d');
     this.moments = [];
     this.silences = [];
+    this.cancelled = false;
   }
 
-  async detectMoments() {
+  cancel() {
+    this.cancelled = true;
+  }
+
+  async detectMoments(onProgress) {
     console.log('Analyzing video for best moments...');
+    this.cancelled = false;
     const moments = [];
     const frameInterval = 0.5;
     const duration = this.video.duration || 60;
+    const totalSteps = Math.max(1, Math.ceil(duration / frameInterval));
 
     const targetWidth = this.canvas.width;
     const targetHeight = this.canvas.height;
 
-    for (let time = 0; time < duration; time += frameInterval) {
-      // Set up the listener BEFORE changing currentTime to avoid race condition
+    for (let step = 0, time = 0; time < duration; step++, time += frameInterval) {
+      if (this.cancelled) break;
+
       const seeked = new Promise(resolve => {
         this.video.addEventListener('seeked', resolve, { once: true });
       });
       this.video.currentTime = time;
       await seeked;
 
-      // Confirm video frame is actually ready before reading pixels
       if (this.video.readyState < 2) continue;
 
       this.ctx.drawImage(this.video, 0, 0, targetWidth, targetHeight);
       const imageData = this.ctx.getImageData(0, 0, targetWidth, targetHeight);
-
       const score = this.analyzeFrame(imageData);
 
       if (score > 0.5) {
         moments.push({ time, score });
+      }
+
+      if (onProgress) {
+        onProgress(Math.min(1, (step + 1) / totalSteps));
       }
     }
 
@@ -45,9 +55,7 @@ class MagicCut {
   analyzeFrame(imageData) {
     const data = imageData.data;
     let brightness = 0;
-    
-    // Performance Optimization: Implementation of a pixel step cadence to avoid main thread evaluation lockups.
-    const pixelStep = 16; 
+    const pixelStep = 16;
     let countedSamples = 0;
 
     for (let i = 0; i < data.length; i += (4 * pixelStep)) {
@@ -72,7 +80,7 @@ class MagicCut {
     return (brightness / 255) * 0.5 + movement * 0.5;
   }
 
-  async detectSilences(threshold = -40) {
+  async detectSilences(threshold = -40, onProgress) {
     console.log('Detecting silences...');
     if (!this.video.src) {
       console.log('No video source file found for audio parsing context.');
@@ -80,21 +88,23 @@ class MagicCut {
     }
 
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
+
     try {
       const response = await fetch(this.video.src);
       const arrayBuffer = await response.arrayBuffer();
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      
+
       const rawData = audioBuffer.getChannelData(0);
       const sampleRate = audioBuffer.sampleRate;
       const blockSize = 4096;
       const minSilenceDuration = 0.5;
       const detectedSilences = [];
       let silenceStart = null;
+      const totalBlocks = Math.ceil(rawData.length / blockSize);
 
-      // Iteration logic avoiding heavy sub-array slice reallocations inside memory loops
-      for (let i = 0; i < rawData.length; i += blockSize) {
+      for (let block = 0, i = 0; i < rawData.length; block++, i += blockSize) {
+        if (this.cancelled) break;
+
         const endLimit = Math.min(i + blockSize, rawData.length);
         let sumOfSquares = 0;
         let count = 0;
@@ -106,33 +116,37 @@ class MagicCut {
 
         if (count === 0) continue;
         const rms = Math.sqrt(sumOfSquares / count);
-        const db = 20 * Math.log10(Math.max(rms, 0.0001)); // Bound clamp to prevent -Infinity issues
+        const db = 20 * Math.log10(Math.max(rms, 0.0001));
         const currentTime = i / sampleRate;
 
         if (db < threshold) {
           if (silenceStart === null) {
             silenceStart = currentTime;
           }
-        } else {
-          if (silenceStart !== null) {
-            const silenceDuration = currentTime - silenceStart;
-            if (silenceDuration > minSilenceDuration) {
-              detectedSilences.push({
-                start: silenceStart,
-                end: currentTime,
-                duration: silenceDuration
-              });
-            }
-            silenceStart = null;
+        } else if (silenceStart !== null) {
+          const silenceDuration = currentTime - silenceStart;
+          if (silenceDuration > minSilenceDuration) {
+            detectedSilences.push({
+              start: silenceStart,
+              end: currentTime,
+              duration: silenceDuration
+            });
           }
+          silenceStart = null;
+        }
+
+        if (onProgress && block % 8 === 0) {
+          onProgress(Math.min(1, block / totalBlocks));
         }
       }
 
+      await audioContext.close();
       this.silences = detectedSilences;
       console.log('Detected silences setup complete:', detectedSilences.length);
       return detectedSilences;
     } catch (error) {
       console.error('Audio context processing track exception:', error);
+      await audioContext.close().catch(() => {});
       return [];
     }
   }
@@ -177,11 +191,25 @@ class MagicCut {
     return cutPoints;
   }
 
-  async analyzeFull() {
+  async analyzeFull(onProgress) {
     console.log('Starting full analysis...');
-    const moments = await this.detectMoments();
-    const silences = await this.detectSilences();
+    this.cancelled = false;
+
+    const report = (fraction, label) => {
+      if (onProgress) onProgress(fraction, label);
+    };
+
+    report(0, 'Scanning frames...');
+    const moments = await this.detectMoments((p) => report(p * 0.65, 'Scanning frames...'));
+    if (this.cancelled) return { moments: [], silences: [], cutPoints: [] };
+
+    report(0.65, 'Detecting silences...');
+    const silences = await this.detectSilences(-40, (p) => report(0.65 + p * 0.3, 'Detecting silences...'));
+    if (this.cancelled) return { moments, silences: [], cutPoints: [] };
+
+    report(0.95, 'Building cut points...');
     const cutPoints = this.generateCutPoints();
+    report(1, 'Done');
 
     return { moments, silences, cutPoints };
   }

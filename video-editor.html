@@ -23,30 +23,18 @@
 
   <div class="container-main">
     <div class="workspace">
-      <!-- ===== PREVIEW SECTION - LARGE EDITED + SMALL ORIGINAL ===== -->
+      <!-- ===== PREVIEW SECTION - LARGE EDITED OUTPUT ===== -->
       <div class="preview-section">
-        <!-- MAIN LARGE EDITED PREVIEW (70%) -->
         <div class="preview-main" id="outputContainer">
           <div class="preview-header-main">✨ Edited Output</div>
           <div class="preview-canvas-wrapper">
             <canvas id="canvas" width="1920" height="1080"></canvas>
-            <canvas id="compareOriginalCanvas" width="1920" height="1080" aria-hidden="true"></canvas>
-          
-          <!-- Compare Slider (hidden by default) -->
-          <div class="compare-slider" id="compareSlider" style="display: none;">
-            <div class="compare-slider-handle"></div>
-            <div class="compare-label compare-label-before">📹 Original</div>
-            <div class="compare-label compare-label-after">✨ Edited</div>
-          </div>
-          
           </div>
 
-          <!-- MAIN CONTROLS -->
           <div class="preview-controls-main">
             <div class="control-group">
               <button onclick="playComposition()" class="btn-primary">▶ Preview</button>
               <button onclick="stopComposition()" class="btn-primary">⏹ Stop</button>
-              <button onclick="toggleCompare()" id="compareBtn" class="btn-compare">📊 Compare</button>
             </div>
             <div class="control-group">
               <button onclick="extractFrame()" class="btn-secondary">📸 Extract</button>
@@ -56,13 +44,7 @@
           </div>
         </div>
 
-        <!-- SMALL ORIGINAL VIDEO THUMBNAIL (30%) -->
-        <div class="preview-original">
-          <div class="preview-header-small">📹 Original Video</div>
-          <div class="preview-video-small">
-            <video id="video"></video>
-          </div>
-        </div>
+        <video id="video" class="source-video" aria-hidden="true"></video>
       </div>
 
       <div class="timeline-section">
@@ -86,8 +68,8 @@
           <span id="ruler4">15s</span>
         </div>
 
-        <div class="timeline-track-wrapper">
-          <div class="timeline-track" id="timelineTrack">
+        <div class="timeline-track-wrapper" id="timelineScroll">
+          <div class="timeline-track seekable" id="timelineTrack">
             <div class="playhead" id="playhead"></div>
             <div class="timeline-lane lane-video">
               <span class="lane-label">MEDIA</span>
@@ -128,7 +110,10 @@
           <span class="slider-value" id="transitionDurationValue">0.5s</span>
         </div>
 
-        <div class="status-message" id="transitionStatus">✨ Ready</div>
+        <div class="status-message" id="transitionStatus">✨ Ready — applies between adjacent clips</div>
+        <p style="font-size: 0.68em; color: #888; margin-top: 8px;">
+          Shortcuts: Space play/pause · Del delete clip · I/O in-out · Ctrl+Z undo · Ctrl+Y redo
+        </p>
       </div>
 
       <!-- AUDIO TAB -->
@@ -304,6 +289,12 @@
             <button onclick="applyMagicCutToTimeline()" style="font-size: 0.8em; padding: 10px;">Apply Analysis</button>
           </div>
           <div class="status-message" id="magicCutStatus"></div>
+          <div class="export-progress-wrap" id="magicCutProgressWrap">
+            <div class="export-progress-track">
+              <div class="export-progress-fill" id="magicCutProgressFill"></div>
+            </div>
+            <div class="export-progress-label" id="magicCutProgressLabel">0%</div>
+          </div>
           <div id="magicCutResults" style="display: none; margin-top: 10px; font-size: 0.8em; padding: 10px; background: rgba(157, 78, 221, 0.1); border-radius: 5px; border-left: 3px solid #9d4edd;">
             Moments Found: <span id="momentCount">0</span> | Cut Points: <span id="cutCount">0</span>
           </div>
@@ -320,6 +311,19 @@
           </div>
 
           <div class="status-message" id="exportStatus"></div>
+          <div class="export-progress-wrap" id="exportProgressWrap">
+            <div class="export-progress-track">
+              <div class="export-progress-fill" id="exportProgressFill"></div>
+            </div>
+            <div class="export-progress-label" id="exportProgressLabel">0%</div>
+          </div>
+          <div class="divider"></div>
+          <h3 style="font-size: 0.9em; color: #aef7ff; margin-bottom: 8px;">💾 Project</h3>
+          <div class="sidebar-group full">
+            <button onclick="saveProject()" style="font-size: 0.8em; padding: 10px;">Save Project</button>
+            <button onclick="loadProject()" style="font-size: 0.8em; padding: 10px;">Load Project</button>
+          </div>
+          <p id="projectStatus" style="font-size: 0.7em; color: #888; margin-top: 8px;">Saves timeline, effects, and media to browser storage.</p>
           <div style="font-size: 0.75em; color: #aaa; margin-top: 10px; padding: 10px; background: rgba(100, 100, 100, 0.1); border-radius: 5px;">
             ⚠️ Don't close tab during export
           </div>
@@ -357,8 +361,6 @@
     const video = document.getElementById("video");
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const compareOriginalCanvas = document.getElementById('compareOriginalCanvas');
-    const compareOriginalCtx = compareOriginalCanvas.getContext('2d');
 
     let originalFrame = null;
     let gpu = null;
@@ -377,22 +379,157 @@
     let exportAudioContext = null;
     let exportAudioElements = [];
     let timelineEffects = [];
+    let clipTransitions = [];
+    let compositionCurrentTime = 0;
+    let inPoint = 0;
+    let outPoint = null;
+    let historyStack = [];
+    let historyIndex = -1;
+    let isRestoringHistory = false;
+    let crossfadeCanvasA = null;
+    let crossfadeCanvasB = null;
+    let exportAudioSources = [];
+    let exportClockStart = 0;
+    let previewAudioEl = null;
+    let selectedTimelineItemId = null;
+    let timelineInteraction = null;
+    let timelineInteractionsBound = false;
+    let suppressNextBlockClick = false;
+    let isExporting = false;
+    const PROJECT_STORAGE_KEY = 'gpuVideoEditorProject';
+    const PROJECT_DB_NAME = 'GpuVideoEditorFiles';
+    const PROJECT_DB_VERSION = 1;
+    const LANE_LABEL_WIDTH = 60;
+
+    // ===== UNDO / REDO =====
+    function captureEditorState() {
+      return {
+        items: (mediaComposer?.items || []).map(item => ({
+          id: item.id,
+          type: item.type,
+          file: item.file,
+          fileName: item.file?.name,
+          startTime: item.startTime,
+          duration: item.duration,
+          sourceDuration: item.sourceDuration,
+          trimStart: item.trimStart || 0,
+          properties: JSON.parse(JSON.stringify(item.properties || {}))
+        })),
+        compositionMode: mediaComposer?.compositionMode || 'sequential',
+        timelineEffects: JSON.parse(JSON.stringify(timelineEffects)),
+        clipTransitions: JSON.parse(JSON.stringify(clipTransitions)),
+        textOverlays: JSON.parse(JSON.stringify(textOverlays)),
+        selectedTimelineItemId,
+        compositionCurrentTime,
+        inPoint,
+        outPoint
+      };
+    }
+
+    async function restoreEditorState(state) {
+      if (!state || !mediaComposer) return;
+      isRestoringHistory = true;
+
+      const snapshotIds = new Set(state.items.map(item => item.id));
+      [...mediaComposer.items].forEach(item => {
+        if (!snapshotIds.has(item.id)) mediaComposer.removeMedia(item.id);
+      });
+
+      for (const snap of state.items) {
+        let item = mediaComposer.getItemById(snap.id);
+        if (!item && snap.file) {
+          if (snap.type === 'video') {
+            item = await mediaComposer.addVideo(snap.file, snap.startTime);
+          } else {
+            item = await mediaComposer.addImage(snap.file, snap.startTime, snap.duration);
+          }
+          item.id = snap.id;
+        }
+        if (item) {
+          item.startTime = snap.startTime;
+          item.duration = snap.duration;
+          item.sourceDuration = snap.sourceDuration ?? item.sourceDuration;
+          item.trimStart = snap.trimStart || 0;
+          item.properties = { ...item.properties, ...snap.properties };
+        }
+      }
+
+      mediaComposer.setCompositionMode(state.compositionMode || 'overlay');
+      timelineEffects = JSON.parse(JSON.stringify(state.timelineEffects || []));
+      clipTransitions = JSON.parse(JSON.stringify(state.clipTransitions || []));
+      textOverlays = JSON.parse(JSON.stringify(state.textOverlays || []));
+      selectedTimelineItemId = state.selectedTimelineItemId || null;
+      compositionCurrentTime = state.compositionCurrentTime || 0;
+      inPoint = state.inPoint || 0;
+      outPoint = state.outPoint;
+
+      renderTimeline();
+      updateMediaLibrary();
+      seekToTime(compositionCurrentTime);
+      isRestoringHistory = false;
+    }
+
+    function pushHistory() {
+      if (isRestoringHistory) return;
+      const snapshot = captureEditorState();
+      historyStack = historyStack.slice(0, historyIndex + 1);
+      historyStack.push(snapshot);
+      if (historyStack.length > 50) historyStack.shift();
+      historyIndex = historyStack.length - 1;
+    }
+
+    async function undo() {
+      if (historyIndex <= 0) return;
+      historyIndex -= 1;
+      await restoreEditorState(historyStack[historyIndex]);
+    }
+
+    async function redo() {
+      if (historyIndex >= historyStack.length - 1) return;
+      historyIndex += 1;
+      await restoreEditorState(historyStack[historyIndex]);
+    }
 
     function addTransition(type) {
-      if (!mediaComposer || mediaComposer.items.length === 0) {
-        alert('Add media first');
+      initMediaComposer();
+      if (!mediaComposer || mediaComposer.items.length < 2) {
+        alert('Add at least two adjacent clips first');
         return;
       }
+
       const duration = parseFloat(document.getElementById('transitionDuration').value) || 0.5;
-      timelineEffects.push({
-        type: 'transition-' + type,
-        start: 0,
-        end: duration,
-        value: duration,
-        id: Date.now() + Math.random()
+      const pairs = mediaComposer.getAdjacentPairs();
+
+      let pair = null;
+      if (selectedTimelineItemId) {
+        pair = pairs.find(p => p.from.id === selectedTimelineItemId || p.to.id === selectedTimelineItemId);
+      }
+      if (!pair) {
+        pair = pairs.find(p => Math.abs(compositionCurrentTime - p.boundary) <= duration + 0.5);
+      }
+      if (!pair) {
+        pair = pairs[0];
+      }
+      if (!pair) {
+        alert('No adjacent clips found. Place clips end-to-end on the timeline.');
+        return;
+      }
+
+      pushHistory();
+      clipTransitions = clipTransitions.filter(tr => tr.fromId !== pair.from.id || tr.toId !== pair.to.id);
+      clipTransitions.push({
+        id: `tr-${Date.now()}`,
+        type,
+        fromId: pair.from.id,
+        toId: pair.to.id,
+        boundary: pair.boundary,
+        start: pair.boundary,
+        end: pair.boundary + duration
       });
-      document.getElementById('transitionStatus').textContent = `Added ${type} transition`;
-      console.log('✅ Transition added');
+
+      document.getElementById('transitionStatus').textContent =
+        `${type} transition at ${pair.boundary.toFixed(1)}s between clips`;
+      renderTimeline();
     }
 
     function addAudioTrack() {
@@ -401,6 +538,8 @@
       audioTracks.forEach(track => URL.revokeObjectURL(track.url));
       audioTracks = [{
         id: Date.now(),
+        file: audioFileEl,
+        fileName: audioFileEl.name,
         url: URL.createObjectURL(audioFileEl),
         vol: parseFloat(document.getElementById('audioVolume').value),
         start: parseFloat(document.getElementById('audioStart').value)
@@ -439,27 +578,9 @@
       }
     }
 
-    function syncCompareCanvasSize() {
-      if (compareOriginalCanvas.width !== canvas.width) compareOriginalCanvas.width = canvas.width;
-      if (compareOriginalCanvas.height !== canvas.height) compareOriginalCanvas.height = canvas.height;
-    }
-
-    function setCompareOriginalFromCanvas() {
-      syncCompareCanvasSize();
-      compareOriginalCtx.clearRect(0, 0, compareOriginalCanvas.width, compareOriginalCanvas.height);
-      compareOriginalCtx.drawImage(canvas, 0, 0, compareOriginalCanvas.width, compareOriginalCanvas.height);
-    }
-
-    function setCompareOriginalFromFrame(frame) {
-      if (!frame) return;
-      syncCompareCanvasSize();
-      compareOriginalCtx.putImageData(frame, 0, 0);
-    }
-
     // ===== EFFECTS =====
     function extractFrameFromCanvas() {
       originalFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      setCompareOriginalFromFrame(originalFrame);
       if (!gpu) {
         gpu = new GPUProcessor(document.createElement('canvas'));
         gpu.canvas.width = canvas.width;
@@ -475,7 +596,6 @@
       }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       originalFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      setCompareOriginalFromFrame(originalFrame);
       if (!gpu) {
         gpu = new GPUProcessor(document.createElement('canvas'));
         gpu.canvas.width = canvas.width;
@@ -603,29 +723,375 @@
     }
 
     // ===== TIMELINE =====
+    function getTimelineDuration() {
+      if (!mediaComposer || mediaComposer.items.length === 0) return 60;
+      return Math.max(mediaComposer.getTimelineEnd(), 1);
+    }
+
+    function timeToPixels(seconds) {
+      return seconds * pixelsPerSecond;
+    }
+
+    function pixelsToTime(pixels) {
+      return Math.max(0, pixels / pixelsPerSecond);
+    }
+
+    function getTimelineBlocksRect() {
+      const lane = document.getElementById('mediaBlocks');
+      if (!lane) return null;
+      return lane.getBoundingClientRect();
+    }
+
+    function clientXToTimelineTime(clientX) {
+      const rect = getTimelineBlocksRect();
+      if (!rect) return 0;
+      return pixelsToTime(clientX - rect.left);
+    }
+
+    function updatePlayheadPosition(time) {
+      const playhead = document.getElementById('playhead');
+      const track = document.getElementById('timelineTrack');
+      if (!playhead || !track) return;
+
+      const totalDuration = getTimelineDuration();
+      const lane = document.getElementById('mediaBlocks');
+      const laneWidth = lane ? lane.offsetWidth : timeToPixels(totalDuration);
+      const leftPx = LANE_LABEL_WIDTH + timeToPixels(Math.min(time, totalDuration));
+
+      playhead.style.left = `${leftPx}px`;
+      playhead.style.height = `${track.offsetHeight}px`;
+    }
+
+    function updateTimelineRuler() {
+      const totalDuration = getTimelineDuration();
+      const labels = [
+        document.querySelector('#timelineRuler span'),
+        document.getElementById('ruler2'),
+        document.getElementById('ruler3'),
+        document.getElementById('ruler4')
+      ];
+      const marks = [0, 0.25, 0.5, 0.75].map(r => r * totalDuration);
+      labels.forEach((el, idx) => {
+        if (!el) return;
+        const seconds = marks[idx];
+        el.textContent = seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
+      });
+    }
+
+    function getPlaybackEndTime() {
+      const total = getTimelineDuration();
+      return outPoint != null ? Math.min(outPoint, total) : total;
+    }
+
+    function ensureCrossfadeCanvases() {
+      if (!crossfadeCanvasA) {
+        crossfadeCanvasA = document.createElement('canvas');
+        crossfadeCanvasB = document.createElement('canvas');
+      }
+      if (crossfadeCanvasA.width !== canvas.width) {
+        crossfadeCanvasA.width = canvas.width;
+        crossfadeCanvasA.height = canvas.height;
+        crossfadeCanvasB.width = canvas.width;
+        crossfadeCanvasB.height = canvas.height;
+      }
+    }
+
+    function getActiveClipTransition(time) {
+      return clipTransitions.find(tr => time >= tr.start && time < tr.end) || null;
+    }
+
+    function renderCompositionMedia(time) {
+      initMediaComposer();
+      if (!mediaComposer || mediaComposer.items.length === 0) return;
+
+      const transition = getActiveClipTransition(time);
+      if (!transition) {
+        mediaComposer.renderFrame(time);
+        return;
+      }
+
+      const from = mediaComposer.getItemById(transition.fromId);
+      const to = mediaComposer.getItemById(transition.toId);
+      if (!from || !to) {
+        mediaComposer.renderFrame(time);
+        return;
+      }
+
+      ensureCrossfadeCanvases();
+      const t = (time - transition.start) / Math.max(0.001, transition.end - transition.start);
+      const ctxA = crossfadeCanvasA.getContext('2d');
+      const ctxB = crossfadeCanvasB.getContext('2d');
+      const fromTime = Math.max(from.startTime, transition.boundary - 0.05);
+      const toTime = Math.max(to.startTime, time);
+
+      mediaComposer.renderOnlyItem(from, fromTime, ctxA);
+      mediaComposer.renderOnlyItem(to, toTime, ctxB);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (transition.type === 'zoom') {
+        const scaleA = 1 + t * 0.15;
+        const scaleB = 1.15 - t * 0.15;
+        ctx.save();
+        ctx.globalAlpha = 1 - t;
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.scale(scaleA, scaleA);
+        ctx.translate(-canvas.width / 2, -canvas.height / 2);
+        ctx.drawImage(crossfadeCanvasA, 0, 0);
+        ctx.restore();
+        ctx.save();
+        ctx.globalAlpha = t;
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.scale(scaleB, scaleB);
+        ctx.translate(-canvas.width / 2, -canvas.height / 2);
+        ctx.drawImage(crossfadeCanvasB, 0, 0);
+        ctx.restore();
+      } else if (transition.type === 'slide') {
+        const offset = canvas.width * t;
+        ctx.save();
+        ctx.globalAlpha = 1 - t;
+        ctx.drawImage(crossfadeCanvasA, -offset, 0);
+        ctx.restore();
+        ctx.save();
+        ctx.globalAlpha = t;
+        ctx.drawImage(crossfadeCanvasB, canvas.width - offset, 0);
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.globalAlpha = 1 - t;
+        ctx.drawImage(crossfadeCanvasA, 0, 0);
+        ctx.restore();
+        ctx.save();
+        ctx.globalAlpha = t;
+        ctx.drawImage(crossfadeCanvasB, 0, 0);
+        ctx.restore();
+      }
+
+      if (transition.type === 'blur') {
+        try {
+          const blurred = gpu.blur(ctx.getImageData(0, 0, canvas.width, canvas.height), 4 * (1 - Math.abs(0.5 - t) * 2));
+          ctx.putImageData(blurred, 0, 0);
+        } catch (e) { /* ignore */ }
+      }
+    }
+
+    function renderCompositionFrame(time) {
+      initMediaComposer();
+      if (!mediaComposer || mediaComposer.items.length === 0) return;
+
+      if (!gpu) {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = canvas.width;
+        offscreen.height = canvas.height;
+        gpu = new GPUProcessor(offscreen);
+      }
+
+      renderCompositionMedia(time);
+      applyCompositionEffects(time);
+      renderTextOverlays(time);
+      compositionCurrentTime = time;
+      updatePlayheadPosition(time);
+    }
+
+    function syncPreviewAudio(elapsed, audioTrack) {
+      if (!previewAudioEl || !audioTrack) return;
+      const aStart = Number.isFinite(audioTrack.start) ? audioTrack.start : 0;
+      if (elapsed < aStart) {
+        if (!previewAudioEl.paused) previewAudioEl.pause();
+        return;
+      }
+      const targetTime = Math.max(0, elapsed - aStart);
+      if (previewAudioEl.paused) {
+        previewAudioEl.currentTime = targetTime;
+        previewAudioEl.play().catch(() => {});
+        return;
+      }
+      if (Math.abs(previewAudioEl.currentTime - targetTime) > 0.12) {
+        previewAudioEl.currentTime = targetTime;
+      }
+    }
+
+    function stopPreviewAudio() {
+      if (previewAudioEl) {
+        previewAudioEl.pause();
+        previewAudioEl = null;
+      }
+    }
+
+    function seekToTime(time) {
+      const totalDuration = getTimelineDuration();
+      const clamped = Math.max(0, Math.min(time, totalDuration));
+      stopComposition();
+      renderCompositionFrame(clamped);
+    }
+
     function renderTimeline() {
       const mediaLane = document.getElementById('mediaBlocks');
+      if (!mediaLane) return;
       mediaLane.innerHTML = '';
 
-      if (mediaComposer && mediaComposer.items && mediaComposer.items.length > 0) {
-        mediaComposer.items.forEach(item => {
+      if (mediaComposer && mediaComposer.items.length > 0) {
+        mediaComposer.items.forEach((item, index) => {
           const block = document.createElement('div');
-          block.className = 'block block-video';
-          block.style.left = (item.startTime * pixelsPerSecond) + 'px';
-          block.style.width = Math.max(item.duration * pixelsPerSecond, 30) + 'px';
-          block.textContent = item.type === 'video' ? '🎬' : '🖼️';
-          block.style.background = 'linear-gradient(135deg, #06b6d4 0%, #06d6d9 100%)';
+          block.className = `block block-${item.type}${selectedTimelineItemId === item.id ? ' selected' : ''}`;
+          block.dataset.itemId = item.id;
+          block.style.left = timeToPixels(item.startTime) + 'px';
+          block.style.width = Math.max(timeToPixels(item.duration), 30) + 'px';
+
+          const label = document.createElement('span');
+          label.className = 'block-label';
+          const fileName = item.file?.name || `${item.type} ${index + 1}`;
+          label.textContent = `${item.type === 'video' ? '🎬' : '🖼️'} ${fileName}`;
+          block.appendChild(label);
+
+          const leftHandle = document.createElement('div');
+          leftHandle.className = 'block-trim-handle left';
+          leftHandle.dataset.trimEdge = 'left';
+          block.appendChild(leftHandle);
+
+          const rightHandle = document.createElement('div');
+          rightHandle.className = 'block-trim-handle right';
+          rightHandle.dataset.trimEdge = 'right';
+          block.appendChild(rightHandle);
+
           mediaLane.appendChild(block);
         });
       }
 
-      const totalDuration = mediaComposer ? (mediaComposer.getTotalDuration() || 60) : 60;
-      const totalWidth = totalDuration * pixelsPerSecond;
-      mediaLane.style.width = totalWidth + 'px';
+      const totalDuration = getTimelineDuration();
+      mediaLane.style.width = Math.max(timeToPixels(totalDuration), 300) + 'px';
+
+      clipTransitions.forEach(tr => {
+        const marker = document.createElement('div');
+        marker.className = 'clip-transition-marker';
+        marker.style.left = timeToPixels(tr.start) + 'px';
+        marker.style.width = Math.max(timeToPixels(tr.end - tr.start), 8) + 'px';
+        marker.title = `${tr.type} transition`;
+        mediaLane.appendChild(marker);
+      });
+
+      if (inPoint > 0) {
+        const inMarker = document.createElement('div');
+        inMarker.className = 'timeline-marker in-marker';
+        inMarker.style.left = timeToPixels(inPoint) + 'px';
+        inMarker.title = `In: ${inPoint.toFixed(2)}s`;
+        mediaLane.appendChild(inMarker);
+      }
+      if (outPoint != null) {
+        const outMarker = document.createElement('div');
+        outMarker.className = 'timeline-marker out-marker';
+        outMarker.style.left = timeToPixels(outPoint) + 'px';
+        outMarker.title = `Out: ${outPoint.toFixed(2)}s`;
+        mediaLane.appendChild(outMarker);
+      }
+
+      updateTimelineRuler();
+      updatePlayheadPosition(compositionCurrentTime);
+      bindTimelineInteractions();
+    }
+
+    function bindTimelineInteractions() {
+      if (timelineInteractionsBound) return;
+      timelineInteractionsBound = true;
+
+      const track = document.getElementById('timelineTrack');
+      const mediaLane = document.getElementById('mediaBlocks');
+      if (!track || !mediaLane) return;
+
+      track.addEventListener('pointerdown', (event) => {
+        if (event.target.closest('.block')) return;
+        if (!mediaComposer || mediaComposer.items.length === 0) return;
+        seekToTime(clientXToTimelineTime(event.clientX));
+      });
+
+      mediaLane.addEventListener('pointerdown', (event) => {
+        const block = event.target.closest('.block');
+        if (!block || !mediaComposer) return;
+
+        const itemId = block.dataset.itemId;
+        const item = mediaComposer.getItemById(itemId);
+        if (!item) return;
+
+        selectedTimelineItemId = itemId;
+        const trimHandle = event.target.closest('.block-trim-handle');
+        const mode = trimHandle ? 'trim' : 'move';
+        const trimEdge = trimHandle?.dataset.trimEdge || null;
+
+        timelineInteraction = {
+          mode,
+          trimEdge,
+          itemId,
+          startX: event.clientX,
+          originStart: item.startTime,
+          originDuration: item.duration,
+          originTrimStart: item.trimStart || 0,
+          moved: false
+        };
+
+        block.classList.add(mode === 'trim' ? 'trimming' : 'dragging');
+        block.setPointerCapture(event.pointerId);
+        event.preventDefault();
+        renderTimeline();
+      });
+
+      mediaLane.addEventListener('pointermove', (event) => {
+        if (!timelineInteraction || !mediaComposer) return;
+
+        const item = mediaComposer.getItemById(timelineInteraction.itemId);
+        if (!item) return;
+
+        const deltaPx = event.clientX - timelineInteraction.startX;
+        const deltaTime = pixelsToTime(deltaPx);
+        if (Math.abs(deltaPx) > 2) timelineInteraction.moved = true;
+
+        if (timelineInteraction.mode === 'move') {
+          mediaComposer.moveItem(item.id, timelineInteraction.originStart + deltaTime);
+        } else if (timelineInteraction.trimEdge === 'left') {
+          item.startTime = timelineInteraction.originStart;
+          item.duration = timelineInteraction.originDuration;
+          item.trimStart = timelineInteraction.originTrimStart;
+          mediaComposer.trimItemStart(item.id, deltaTime);
+        } else if (timelineInteraction.trimEdge === 'right') {
+          item.duration = timelineInteraction.originDuration;
+          mediaComposer.trimItemEnd(item.id, deltaTime);
+        }
+
+        renderTimeline();
+        renderCompositionFrame(compositionCurrentTime);
+      });
+
+      const endInteraction = (event) => {
+        if (!timelineInteraction) return;
+        if (timelineInteraction.moved) pushHistory();
+        suppressNextBlockClick = !!timelineInteraction.moved;
+        const block = mediaLane.querySelector(`[data-item-id="${timelineInteraction.itemId}"]`);
+        if (block && block.hasPointerCapture?.(event.pointerId)) {
+          block.releasePointerCapture(event.pointerId);
+        }
+        if (block) block.classList.remove('dragging', 'trimming');
+        timelineInteraction = null;
+      };
+
+      mediaLane.addEventListener('pointerup', endInteraction);
+      mediaLane.addEventListener('pointercancel', endInteraction);
+
+      mediaLane.addEventListener('click', (event) => {
+        const block = event.target.closest('.block');
+        if (!block) return;
+        if (suppressNextBlockClick) {
+          suppressNextBlockClick = false;
+          return;
+        }
+        selectedTimelineItemId = block.dataset.itemId;
+        renderTimeline();
+      });
+
     }
 
     document.getElementById('zoomSlider').addEventListener('input', (e) => {
-      pixelsPerSecond = parseInt(e.target.value);
+      pixelsPerSecond = parseInt(e.target.value, 10);
       document.getElementById('zoomValue').textContent = pixelsPerSecond + 'px/s';
       renderTimeline();
     });
@@ -723,7 +1189,7 @@
     }
 
     // ===== PLAY COMPOSITION =====
-    function playComposition() {
+    function playComposition(fromTime) {
       initMediaComposer();
 
       if (!mediaComposer || mediaComposer.items.length === 0) {
@@ -731,23 +1197,27 @@
         return;
       }
 
+      if (typeof fromTime === 'number') {
+        compositionCurrentTime = Math.max(inPoint, fromTime);
+      } else if (compositionCurrentTime < inPoint) {
+        compositionCurrentTime = inPoint;
+      }
+
       console.log('▶ Starting playback with', mediaComposer.items.length, 'items');
       isPlayingComposition = true;
-      const startTime = Date.now();
-      const totalDuration = mediaComposer.getTotalDuration();
-
-      // Prepare audio preview element
-      let previewAudioEl = null;
+      const playbackStartWall = performance.now();
+      const playbackStartAt = compositionCurrentTime;
+      const playbackEnd = getPlaybackEndTime();
+      const exportRange = Math.max(0.001, playbackEnd - inPoint);
       const audioTrack = audioTracks.length > 0 ? audioTracks[0] : null;
-      if (audioTrack) {
+
+      stopPreviewAudio();
+      if (audioTrack && !isExporting) {
         previewAudioEl = new Audio(audioTrack.url);
         previewAudioEl.preload = 'auto';
         previewAudioEl.volume = typeof audioTrack.vol === 'number' ? audioTrack.vol : 1;
-        previewAudioEl.loop = false;
-        previewAudioEl.pause();
       }
 
-      // Ensure GPU processor exists
       if (!gpu) {
         const offscreen = document.createElement('canvas');
         offscreen.width = canvas.width;
@@ -755,40 +1225,41 @@
         gpu = new GPUProcessor(offscreen);
       }
 
+      function getElapsedSeconds() {
+        if (isExporting && exportAudioContext) {
+          return inPoint + (exportAudioContext.currentTime - exportClockStart);
+        }
+        return playbackStartAt + (performance.now() - playbackStartWall) / 1000;
+      }
+
       function render() {
         if (!isPlayingComposition) return;
 
-        const elapsed = (Date.now() - startTime) / 1000;
+        const elapsed = getElapsedSeconds();
 
-        if (elapsed > totalDuration) {
-          stopComposition();
+        if (isExporting) {
+          updateExportProgress(elapsed - inPoint, exportRange);
+        }
+
+        if (elapsed >= playbackEnd) {
+          if (isExporting) {
+            updateExportProgress(exportRange, exportRange);
+            pauseComposition();
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+              stopExport();
+            }
+            return;
+          }
+          pauseComposition();
           return;
         }
 
-        mediaComposer.renderFrame(elapsed);
-
-        // Audio preview sync
-        if (previewAudioEl && audioTrack) {
-          const aStart = Number.isFinite(audioTrack.start) ? audioTrack.start : 0;
-          if (elapsed >= aStart) {
-            if (previewAudioEl.paused) {
-              try {
-                previewAudioEl.currentTime = Math.max(0, elapsed - aStart);
-                previewAudioEl.play().catch(() => {});
-              } catch (e) { /* ignore */ }
-            }
-          } else {
-            if (!previewAudioEl.paused) previewAudioEl.pause();
-          }
-        }
-
+        renderCompositionMedia(elapsed);
+        syncPreviewAudio(elapsed, audioTrack);
         applyCompositionEffects(elapsed);
-        // Only update compare original if compare mode is OFF (don't overwrite original while comparing)
-        if (!showCompareMode) setCompareOriginalFromCanvas();
         renderTextOverlays(elapsed);
-
-        const position = (elapsed / totalDuration) * 100;
-        document.getElementById('playhead').style.left = `calc(60px + ${position}%)`;
+        compositionCurrentTime = elapsed;
+        updatePlayheadPosition(elapsed);
 
         compositionPlaybackId = requestAnimationFrame(render);
       }
@@ -796,15 +1267,29 @@
       render();
     }
 
-    function stopComposition() {
+    function pauseComposition() {
       isPlayingComposition = false;
       if (compositionPlaybackId) cancelAnimationFrame(compositionPlaybackId);
       if (mediaComposer) mediaComposer.stopPlayback();
+      stopPreviewAudio();
       if (playingAudio) {
         playingAudio.pause();
         playingAudio = null;
       }
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function togglePlayback() {
+      if (isPlayingComposition) {
+        pauseComposition();
+      } else {
+        playComposition();
+      }
+    }
+
+    function stopComposition() {
+      pauseComposition();
+      compositionCurrentTime = inPoint;
+      seekToTime(inPoint);
       console.log('⏹ Playback stopped');
     }
 
@@ -819,7 +1304,8 @@
         if (!file) return;
         try {
           console.log('📹 Adding video:', file.name);
-          await mediaComposer.addVideo(file, 0);
+          const startAt = mediaComposer.getTimelineEnd();
+          await mediaComposer.addVideo(file, startAt);
           
           // Set the src of the preview video element so it displays the video!
           const url = URL.createObjectURL(file);
@@ -828,6 +1314,7 @@
           video.loop = true;
           video.play().catch(err => console.log('Autoplay prevented:', err));
           
+          pushHistory();
           renderTimeline();
           updateMediaLibrary();
           console.log('✅ Video added successfully');
@@ -849,7 +1336,9 @@
         if (!file) return;
         try {
           console.log('🖼️ Adding image:', file.name);
-          await mediaComposer.addImage(file, 0, 5);
+          const startAt = mediaComposer.getTimelineEnd();
+          await mediaComposer.addImage(file, startAt, 5);
+          pushHistory();
           renderTimeline();
           updateMediaLibrary();
           console.log('✅ Image added successfully');
@@ -877,10 +1366,33 @@
 
     function removeMedia(id) {
       if (mediaComposer) {
+        pushHistory();
         mediaComposer.removeMedia(id);
+        if (selectedTimelineItemId === id) selectedTimelineItemId = null;
         renderTimeline();
         updateMediaLibrary();
       }
+    }
+
+    function deleteSelectedClip() {
+      if (!selectedTimelineItemId) return;
+      removeMedia(selectedTimelineItemId);
+    }
+
+    function setInPoint() {
+      inPoint = compositionCurrentTime;
+      if (outPoint != null && outPoint <= inPoint) {
+        outPoint = getTimelineDuration();
+      }
+      renderTimeline();
+    }
+
+    function setOutPoint() {
+      outPoint = compositionCurrentTime;
+      if (outPoint <= inPoint) {
+        inPoint = 0;
+      }
+      renderTimeline();
     }
 
     function setMediaCompositionMode(mode) {
@@ -895,7 +1407,9 @@
     function clearAllMedia() {
       if (!mediaComposer || mediaComposer.items.length === 0) return;
       if (confirm('Clear all media?')) {
+        pushHistory();
         mediaComposer.clearAll();
+        clipTransitions = [];
         renderTimeline();
         updateMediaLibrary();
       }
@@ -916,19 +1430,45 @@
       console.log('Applied preset:', name);
     }
 
+    function updateMagicCutProgress(fraction, label) {
+      const wrap = document.getElementById('magicCutProgressWrap');
+      const fill = document.getElementById('magicCutProgressFill');
+      const status = document.getElementById('magicCutProgressLabel');
+      if (!wrap || !fill || !status) return;
+      const pct = Math.round(Math.max(0, Math.min(1, fraction)) * 100);
+      wrap.classList.add('active');
+      fill.style.width = `${pct}%`;
+      status.textContent = `${pct}% — ${label || 'Analyzing...'}`;
+    }
+
+    function resetMagicCutProgress() {
+      const wrap = document.getElementById('magicCutProgressWrap');
+      const fill = document.getElementById('magicCutProgressFill');
+      const status = document.getElementById('magicCutProgressLabel');
+      if (!wrap || !fill || !status) return;
+      wrap.classList.remove('active');
+      fill.style.width = '0%';
+      status.textContent = '0%';
+    }
+
     // ===== MAGIC CUT =====
     async function startMagicCut() {
       if (!video.src) return;
       if (!magicCut) magicCut = new MagicCut(video, canvas);
       document.getElementById('magicCutStatus').textContent = '🔄 Analyzing...';
+      resetMagicCutProgress();
       try {
-        const analysis = await magicCut.analyzeFull();
+        const analysis = await magicCut.analyzeFull((fraction, label) => {
+          updateMagicCutProgress(fraction, label);
+        });
         document.getElementById('magicCutResults').style.display = 'block';
         document.getElementById('momentCount').textContent = analysis.moments.length;
         document.getElementById('cutCount').textContent = analysis.cutPoints.length;
         document.getElementById('magicCutStatus').textContent = '✅ Analysis complete!';
+        updateMagicCutProgress(1, 'Done');
       } catch (e) {
         document.getElementById('magicCutStatus').textContent = '❌ Analysis failed';
+        resetMagicCutProgress();
       }
     }
 
@@ -943,6 +1483,7 @@
         return;
       }
       // Add silence-removal markers as timeline effects so they're visible
+      pushHistory();
       cutPoints.forEach(cp => {
         timelineEffects.push({
           type: 'cut',
@@ -959,35 +1500,76 @@
     let mediaRecorder = null;
     let recordedChunks = [];
 
-    function startExport() {
+    function updateExportProgress(elapsed, totalDuration) {
+      const wrap = document.getElementById('exportProgressWrap');
+      const fill = document.getElementById('exportProgressFill');
+      const label = document.getElementById('exportProgressLabel');
+      if (!wrap || !fill || !label) return;
+
+      const pct = totalDuration > 0 ? Math.min(100, (elapsed / totalDuration) * 100) : 0;
+      wrap.classList.add('active');
+      fill.style.width = `${pct}%`;
+      label.textContent = `${Math.round(pct)}% — ${elapsed.toFixed(1)}s / ${totalDuration.toFixed(1)}s`;
+    }
+
+    function resetExportProgress() {
+      const wrap = document.getElementById('exportProgressWrap');
+      const fill = document.getElementById('exportProgressFill');
+      const label = document.getElementById('exportProgressLabel');
+      if (!wrap || !fill || !label) return;
+      wrap.classList.remove('active');
+      fill.style.width = '0%';
+      label.textContent = '0%';
+    }
+
+    async function startExport() {
       if (!mediaComposer || mediaComposer.items.length === 0) {
         alert('Add media first!');
         return;
       }
+
       recordedChunks = [];
       exportAudioElements.forEach(audio => audio.pause());
       exportAudioElements = [];
+      exportAudioSources.forEach(source => {
+        try { source.stop(); } catch (e) { /* ignore */ }
+      });
+      exportAudioSources = [];
       if (exportAudioContext) {
-        exportAudioContext.close();
+        await exportAudioContext.close().catch(() => {});
         exportAudioContext = null;
       }
 
       const stream = canvas.captureStream(30);
+      const playbackEnd = getPlaybackEndTime();
+      const exportRange = Math.max(0.001, playbackEnd - inPoint);
 
       if (audioTracks.length > 0) {
         exportAudioContext = new (window.AudioContext || window.webkitAudioContext)();
         const destination = exportAudioContext.createMediaStreamDestination();
 
-        audioTracks.forEach(track => {
-          const audio = new Audio(track.url);
-          audio.volume = track.vol;
-          audio.currentTime = track.start || 0;
-          const source = exportAudioContext.createMediaElementSource(audio);
-          source.connect(destination);
-          exportAudioElements.push(audio);
-          audio.play();
-        });
+        for (const track of audioTracks) {
+          const response = await fetch(track.url);
+          const buffer = await exportAudioContext.decodeAudioData(await response.arrayBuffer());
+          const source = exportAudioContext.createBufferSource();
+          const gain = exportAudioContext.createGain();
+          source.buffer = buffer;
+          gain.gain.value = typeof track.vol === 'number' ? track.vol : 1;
+          source.connect(gain);
+          gain.connect(destination);
 
+          const offset = Math.max(0, (track.start || 0));
+          const startAt = exportAudioContext.currentTime;
+          const bufferOffset = Math.max(0, inPoint - offset);
+          const playDuration = Math.max(0, exportRange - Math.max(0, offset - inPoint));
+
+          if (playDuration > 0 && bufferOffset < buffer.duration) {
+            source.start(startAt, bufferOffset, Math.min(playDuration, buffer.duration - bufferOffset));
+            exportAudioSources.push(source);
+          }
+        }
+
+        exportClockStart = exportAudioContext.currentTime;
         destination.stream.getAudioTracks().forEach(track => stream.addTrack(track));
       }
 
@@ -997,20 +1579,29 @@
       mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
       mediaRecorder.start();
+      isExporting = true;
+      compositionCurrentTime = inPoint;
+      resetExportProgress();
+      updateExportProgress(0, exportRange);
       document.getElementById('exportStartBtn').disabled = true;
       document.getElementById('exportStartBtn').style.opacity = '0.5';
       document.getElementById('exportStopBtn').disabled = false;
       document.getElementById('exportStopBtn').style.opacity = '1';
       document.getElementById('exportStatus').textContent = '🔴 Recording...';
-      playComposition();
+      playComposition(inPoint);
     }
 
     function stopExport() {
       if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+      isExporting = false;
       mediaRecorder.stop();
       mediaRecorder.onstop = () => {
         exportAudioElements.forEach(audio => audio.pause());
         exportAudioElements = [];
+        exportAudioSources.forEach(source => {
+          try { source.stop(); } catch (e) { /* ignore */ }
+        });
+        exportAudioSources = [];
         if (exportAudioContext) {
           exportAudioContext.close();
           exportAudioContext = null;
@@ -1026,99 +1617,275 @@
         document.getElementById('exportStopBtn').disabled = true;
         document.getElementById('exportStopBtn').style.opacity = '0.5';
         document.getElementById('exportStatus').textContent = '✅ Exported!';
+        updateExportProgress(getTimelineDuration(), getTimelineDuration());
         stopComposition();
       };
     }
 
-    // ===== COMPARE MODE (Before/After Slider) =====
-    let showCompareMode = false;
-    let comparePosition = 50;
-    let compareDragActive = false;
-    let compareSliderBound = false;
+    // ===== PROJECT SAVE / LOAD (localStorage + IndexedDB for media) =====
+    function openProjectDb() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(PROJECT_DB_NAME, PROJECT_DB_VERSION);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains('files')) {
+            db.createObjectStore('files');
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
 
-    function toggleCompare() {
-      showCompareMode = !showCompareMode;
-      const btn = document.getElementById('compareBtn');
-      const slider = document.getElementById('compareSlider');
-      if (!btn || !slider) return;
-      
-      if (showCompareMode) {
-        if (originalFrame) setCompareOriginalFromFrame(originalFrame);
-        compareOriginalCanvas.style.opacity = '1';
-        btn.style.background = 'linear-gradient(135deg, #06b6d4 0%, #06d6d9 100%)';
-        btn.style.color = 'white';
-        btn.style.boxShadow = '0 0 20px rgba(6, 214, 217, 0.6)';
-        slider.style.display = 'block';
-        syncCompareSlider();
-        bindCompareSlider();
-      } else {
-        btn.style.background = 'linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(6, 214, 217, 0.3) 100%)';
-        slider.style.display = 'none';
-        compareOriginalCanvas.style.opacity = '0';
-        compareDragActive = false;
+    async function storeProjectFile(id, file) {
+      const db = await openProjectDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('files', 'readwrite');
+        tx.objectStore('files').put(file, id);
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+      });
+    }
+
+    async function readProjectFile(id) {
+      const db = await openProjectDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('files', 'readonly');
+        const req = tx.objectStore('files').get(id);
+        req.onsuccess = () => { db.close(); resolve(req.result || null); };
+        req.onerror = () => { db.close(); reject(req.error); };
+      });
+    }
+
+    async function clearProjectFiles() {
+      const db = await openProjectDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('files', 'readwrite');
+        tx.objectStore('files').clear();
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+      });
+    }
+
+    function setProjectStatus(message, isError = false) {
+      const el = document.getElementById('projectStatus');
+      if (!el) return;
+      el.textContent = message;
+      el.style.color = isError ? '#ff006e' : '#888';
+    }
+
+    function collectProjectState() {
+      return {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        compositionMode: mediaComposer?.compositionMode || 'sequential',
+        compositionCurrentTime,
+        pixelsPerSecond,
+        timelineEffects,
+        clipTransitions,
+        textOverlays,
+        inPoint,
+        outPoint,
+        audioTracks: audioTracks.map(track => ({
+          id: track.id,
+          fileName: track.fileName || 'audio',
+          vol: track.vol,
+          start: track.start
+        })),
+        items: (mediaComposer?.items || []).map(item => ({
+          id: item.id,
+          type: item.type,
+          fileName: item.file?.name || `${item.type}.bin`,
+          mimeType: item.file?.type || '',
+          startTime: item.startTime,
+          duration: item.duration,
+          sourceDuration: item.sourceDuration,
+          trimStart: item.trimStart || 0,
+          properties: item.properties
+        })),
+        sliders: {
+          brightness: document.getElementById('brightnessSlider')?.value,
+          contrast: document.getElementById('contrastSlider')?.value,
+          saturation: document.getElementById('saturationSlider')?.value,
+          blur: document.getElementById('blurSlider')?.value
+        }
+      };
+    }
+
+    async function saveProject() {
+      initMediaComposer();
+      if (!mediaComposer || mediaComposer.items.length === 0) {
+        alert('Add media before saving a project.');
+        return;
+      }
+
+      try {
+        setProjectStatus('Saving project...');
+        await clearProjectFiles();
+
+        for (const item of mediaComposer.items) {
+          if (item.file) {
+            await storeProjectFile(item.id, item.file);
+          }
+        }
+
+        for (const track of audioTracks) {
+          if (track.file) {
+            await storeProjectFile(`audio-${track.id}`, track.file);
+          }
+        }
+
+        const state = collectProjectState();
+        localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(state));
+        setProjectStatus(`Saved ${state.items.length} clip(s) at ${new Date().toLocaleTimeString()}`);
+      } catch (error) {
+        console.error('Save project error:', error);
+        setProjectStatus(`Save failed: ${error.message}`, true);
       }
     }
 
-    function syncCompareSlider() {
-      const slider = document.getElementById('compareSlider');
-      if (!slider) return;
-      const handle = slider.querySelector('.compare-slider-handle');
-      if (!handle) return;
+    async function loadProject() {
+      const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
+      if (!raw) {
+        alert('No saved project found in this browser.');
+        return;
+      }
 
-      compareOriginalCanvas.style.clipPath = `inset(0 ${100 - comparePosition}% 0 0)`;
-      handle.style.left = comparePosition + '%';
+      try {
+        setProjectStatus('Loading project...');
+        const state = JSON.parse(raw);
+        initMediaComposer();
+
+        stopComposition();
+        mediaComposer.clearAll();
+        audioTracks.forEach(track => URL.revokeObjectURL(track.url));
+        audioTracks = [];
+        timelineEffects = state.timelineEffects || [];
+        clipTransitions = state.clipTransitions || [];
+        textOverlays = state.textOverlays || [];
+        compositionCurrentTime = state.compositionCurrentTime || 0;
+        inPoint = state.inPoint || 0;
+        outPoint = state.outPoint ?? null;
+        pixelsPerSecond = state.pixelsPerSecond || pixelsPerSecond;
+        document.getElementById('zoomSlider').value = pixelsPerSecond;
+        document.getElementById('zoomValue').textContent = pixelsPerSecond + 'px/s';
+
+        if (state.sliders) {
+          ['brightness', 'contrast', 'saturation', 'blur'].forEach(key => {
+            const el = document.getElementById(`${key}Slider`);
+            if (el && state.sliders[key] !== undefined) el.value = state.sliders[key];
+          });
+          initRangeSliderLabels();
+        }
+
+        mediaComposer.setCompositionMode(state.compositionMode || 'overlay');
+
+        for (const itemData of state.items || []) {
+          const file = await readProjectFile(itemData.id);
+          if (!file) {
+            console.warn('Missing file for', itemData.id);
+            continue;
+          }
+
+          let item;
+          if (itemData.type === 'video') {
+            item = await mediaComposer.addVideo(file, itemData.startTime);
+          } else {
+            item = await mediaComposer.addImage(file, itemData.startTime, itemData.duration);
+          }
+
+          item.id = itemData.id;
+          item.startTime = itemData.startTime;
+          item.duration = itemData.duration;
+          item.sourceDuration = itemData.sourceDuration ?? item.duration;
+          item.trimStart = itemData.trimStart || 0;
+          item.properties = { ...item.properties, ...itemData.properties };
+        }
+
+        if (state.audioTracks?.length) {
+          for (const trackData of state.audioTracks) {
+            const file = await readProjectFile(`audio-${trackData.id}`);
+            if (!file) continue;
+            audioTracks.push({
+              id: trackData.id,
+              file,
+              fileName: trackData.fileName,
+              url: URL.createObjectURL(file),
+              vol: trackData.vol,
+              start: trackData.start
+            });
+          }
+        }
+
+        const firstVideo = mediaComposer.items.find(item => item.type === 'video');
+        if (firstVideo?.url) {
+          video.src = firstVideo.url;
+          video.muted = true;
+        }
+
+        renderTimeline();
+        updateMediaLibrary();
+        seekToTime(compositionCurrentTime);
+        setProjectStatus(`Loaded project from ${new Date(state.savedAt).toLocaleString()}`);
+      } catch (error) {
+        console.error('Load project error:', error);
+        setProjectStatus(`Load failed: ${error.message}`, true);
+      }
     }
 
-    function bindCompareSlider() {
-      if (compareSliderBound) return;
+    function isTypingTarget(target) {
+      if (!target) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
+    }
 
-      const slider = document.getElementById('compareSlider');
-      if (!slider) return;
-      const handle = slider.querySelector('.compare-slider-handle');
-      const container = slider.parentElement;
-      if (!handle || !container) return;
+    function bindKeyboardShortcuts() {
+      document.addEventListener('keydown', async (event) => {
+        if (isTypingTarget(event.target)) return;
 
-      const updateComparePosition = (clientX) => {
-        const rect = container.getBoundingClientRect();
-        if (!rect.width) return;
+        const key = event.key.toLowerCase();
+        const mod = event.ctrlKey || event.metaKey;
 
-        const x = clientX - rect.left;
-        comparePosition = Math.max(0, Math.min((x / rect.width) * 100, 100));
-        syncCompareSlider();
-      };
-
-      const startDrag = (e) => {
-        compareDragActive = true;
-        updateComparePosition(e.clientX);
-      };
-
-      const stopDrag = () => {
-        compareDragActive = false;
-      };
-
-      const moveDrag = (e) => {
-        if (!compareDragActive || !showCompareMode) return;
-        updateComparePosition(e.clientX);
-      };
-
-      handle.addEventListener('pointerdown', (e) => {
-        startDrag(e);
-        handle.setPointerCapture?.(e.pointerId);
+        if (mod && key === 'z' && !event.shiftKey) {
+          event.preventDefault();
+          await undo();
+          return;
+        }
+        if ((mod && key === 'y') || (mod && event.shiftKey && key === 'z')) {
+          event.preventDefault();
+          await redo();
+          return;
+        }
+        if (key === ' ' || event.code === 'Space') {
+          event.preventDefault();
+          togglePlayback();
+          return;
+        }
+        if (key === 'delete' || key === 'backspace') {
+          if (selectedTimelineItemId) {
+            event.preventDefault();
+            deleteSelectedClip();
+          }
+          return;
+        }
+        if (key === 'i') {
+          event.preventDefault();
+          setInPoint();
+          return;
+        }
+        if (key === 'o') {
+          event.preventDefault();
+          setOutPoint();
+        }
       });
-
-      slider.addEventListener('pointerdown', startDrag);
-      document.addEventListener('pointerup', stopDrag);
-      document.addEventListener('pointermove', moveDrag);
-
-      document.addEventListener('mouseup', stopDrag);
-      document.addEventListener('mousemove', moveDrag);
-
-      compareSliderBound = true;
     }
 
     // Initialize
     window.addEventListener('load', () => {
       initRangeSliderLabels();
+      initMediaComposer();
+      pushHistory();
+      bindKeyboardShortcuts();
       renderTimeline();
     });
   </script>

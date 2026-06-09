@@ -15,7 +15,8 @@
   "scripts": {
     "start": "node backend-server.js",
     "dev": "node backend-server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check": "node --check backend-server.js && node --check auth-system.js && node --check GpuProcessor.js && node --check magic-cut.js && node --check multi-media.js && node --check app.js",
+    "test": "npm run check && node --test"
   },
   "repository": {
     "type": "git",
