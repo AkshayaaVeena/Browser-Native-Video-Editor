@@ -61,54 +61,42 @@ class MediaComposer {
   // Add image to composition with proper cleanup
   addImage(file, startTime = 0, duration = 5) {
     return new Promise((resolve, reject) => {
-      const reader = new FileReader();
+      const img = new Image();
+      const url = URL.createObjectURL(file);
 
-      const handleReaderLoad = () => {
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        
-        const handleImageLoad = () => {
-          const item = {
-            id: `image-${Date.now()}-${Math.random()}`,
-            type: 'image',
-            file: file,
-            url: url,
-            element: img,
-            image: img,
-            startTime: startTime,
-            duration: duration,
-            properties: {
-              opacity: 1,
-              scale: 1,
-              rotation: 0,
-              x: 0,
-              y: 0,
-              blendMode: 'source-over'
-            }
-          };
-          
-          this.items.push(item);
-          console.log('✅ Image added:', item.id);
-          resolve(item);
+      const handleImageLoad = () => {
+        const item = {
+          id: `image-${Date.now()}-${Math.random()}`,
+          type: 'image',
+          file: file,
+          url: url,
+          element: img,
+          image: img,
+          startTime: startTime,
+          duration: duration,
+          properties: {
+            opacity: 1,
+            scale: 1,
+            rotation: 0,
+            x: 0,
+            y: 0,
+            blendMode: 'source-over'
+          }
         };
 
-        const handleImageError = () => {
-          URL.revokeObjectURL(url); // CRITICAL: Clean up on error
-          reject(new Error('Failed to load image'));
-        };
-
-        img.addEventListener('load', handleImageLoad, { once: true });
-        img.addEventListener('error', handleImageError, { once: true });
-        img.src = url;
+        this.items.push(item);
+        console.log('✅ Image added:', item.id);
+        resolve(item);
       };
 
-      const handleReaderError = () => {
-        reject(new Error('Failed to read file'));
+      const handleImageError = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load image'));
       };
 
-      reader.addEventListener('load', handleReaderLoad, { once: true });
-      reader.addEventListener('error', handleReaderError, { once: true });
-      reader.readAsArrayBuffer(file);
+      img.addEventListener('load', handleImageLoad, { once: true });
+      img.addEventListener('error', handleImageError, { once: true });
+      img.src = url;
     });
   }
 

@@ -492,16 +492,13 @@
     }
 
     function exportFrame() {
-      if (!originalFrame) return;
-      const tc = document.createElement('canvas');
-      tc.width = originalFrame.width;
-      tc.height = originalFrame.height;
-      tc.getContext('2d').putImageData(originalFrame, 0, 0);
-      tc.toBlob((blob) => {
+      canvas.toBlob((blob) => {
+        if (!blob) { alert('Nothing to export'); return; }
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = `frame-${Date.now()}.png`;
         link.click();
+        URL.revokeObjectURL(link.href);
       });
     }
 
@@ -662,42 +659,10 @@
       });
     }
 
-    // ===== PLAY COMPOSITION =====
-    function playComposition() {
-      initMediaComposer();
-      
-      if (!mediaComposer || mediaComposer.items.length === 0) {
-        alert('❌ Add media first! Click "Add Video" or "Add Image"');
-        return;
-      }
-
-      console.log('▶ Starting playback with', mediaComposer.items.length, 'items');
-      isPlayingComposition = true;
-      let startTime = Date.now();
-      const totalDuration = mediaComposer.getTotalDuration();
-      
-      // Prepare audio preview element (not used for export — export handled separately)
-      let previewAudioEl = null;
-      const audioTrack = audioTracks.length > 0 ? audioTracks[0] : null;
-      if (audioTrack) {
-        previewAudioEl = new Audio(audioTrack.url);
-        previewAudioEl.preload = 'auto';
-        previewAudioEl.volume = typeof audioTrack.vol === 'number' ? audioTrack.vol : 1;
-        previewAudioEl.loop = false;
-        previewAudioEl.pause();
-      }
-
-      // Ensure GPU processor exists to apply per-frame filters
-      if (!gpu) {
-        const offscreen = document.createElement('canvas');
-        offscreen.width = canvas.width;
-        offscreen.height = canvas.height;
-        gpu = new GPUProcessor(offscreen);
-      }
-
-      // Helper: apply timeline effects / transitions to current canvas frame
-      function applyCompositionEffects(currentTime) {
-        try {
+    // ===== APPLY COMPOSITION EFFECTS (module-level so export loop can use it too) =====
+    function applyCompositionEffects(currentTime) {
+      if (!gpu) return;
+      try {
           // Read current frame
           let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
@@ -755,6 +720,39 @@
         } catch (err) {
           console.warn('applyCompositionEffects error', err);
         }
+    }
+
+    // ===== PLAY COMPOSITION =====
+    function playComposition() {
+      initMediaComposer();
+
+      if (!mediaComposer || mediaComposer.items.length === 0) {
+        alert('❌ Add media first! Click "Add Video" or "Add Image"');
+        return;
+      }
+
+      console.log('▶ Starting playback with', mediaComposer.items.length, 'items');
+      isPlayingComposition = true;
+      const startTime = Date.now();
+      const totalDuration = mediaComposer.getTotalDuration();
+
+      // Prepare audio preview element
+      let previewAudioEl = null;
+      const audioTrack = audioTracks.length > 0 ? audioTracks[0] : null;
+      if (audioTrack) {
+        previewAudioEl = new Audio(audioTrack.url);
+        previewAudioEl.preload = 'auto';
+        previewAudioEl.volume = typeof audioTrack.vol === 'number' ? audioTrack.vol : 1;
+        previewAudioEl.loop = false;
+        previewAudioEl.pause();
+      }
+
+      // Ensure GPU processor exists
+      if (!gpu) {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = canvas.width;
+        offscreen.height = canvas.height;
+        gpu = new GPUProcessor(offscreen);
       }
 
       function render() {
@@ -768,8 +766,27 @@
         }
 
         mediaComposer.renderFrame(elapsed);
-        setCompareOriginalFromCanvas();
+
+        // Audio preview sync
+        if (previewAudioEl && audioTrack) {
+          const aStart = Number.isFinite(audioTrack.start) ? audioTrack.start : 0;
+          if (elapsed >= aStart) {
+            if (previewAudioEl.paused) {
+              try {
+                previewAudioEl.currentTime = Math.max(0, elapsed - aStart);
+                previewAudioEl.play().catch(() => {});
+              } catch (e) { /* ignore */ }
+            }
+          } else {
+            if (!previewAudioEl.paused) previewAudioEl.pause();
+          }
+        }
+
+        applyCompositionEffects(elapsed);
+        // Only update compare original if compare mode is OFF (don't overwrite original while comparing)
+        if (!showCompareMode) setCompareOriginalFromCanvas();
         renderTextOverlays(elapsed);
+
         const position = (elapsed / totalDuration) * 100;
         document.getElementById('playhead').style.left = `calc(60px + ${position}%)`;
 
@@ -916,7 +933,26 @@
     }
 
     function applyMagicCutToTimeline() {
-      document.getElementById('magicCutStatus').textContent = '✅ Applied!';
+      if (!magicCut || !magicCut.moments || magicCut.moments.length === 0) {
+        document.getElementById('magicCutStatus').textContent = '⚠️ Run analysis first!';
+        return;
+      }
+      const cutPoints = magicCut.generateCutPoints();
+      if (cutPoints.length === 0) {
+        document.getElementById('magicCutStatus').textContent = '⚠️ No cut points found';
+        return;
+      }
+      // Add silence-removal markers as timeline effects so they're visible
+      cutPoints.forEach(cp => {
+        timelineEffects.push({
+          type: 'cut',
+          start: cp.start,
+          end: cp.end,
+          id: Date.now() + Math.random()
+        });
+      });
+      renderTimeline();
+      document.getElementById('magicCutStatus').textContent = `✅ Applied ${cutPoints.length} cut points!`;
     }
 
     // ===== EXPORT =====
@@ -993,353 +1029,6 @@
         stopComposition();
       };
     }
-
-    let availableEnhancements = [];
-let lastEnhancedUrl = null;
-let isEnhancing = false;
- 
-// ===== LOAD ENHANCEMENT OPTIONS ON PAGE LOAD =====
-async function loadEnhancementOptions() {
-  try {
-    const response = await fetch('http://localhost:3001/api/ai/enhancement-options', {
-      headers: auth.getAuthHeaders()
-    });
- 
-    if (!response.ok) {
-      console.error('Failed to load enhancement options');
-      return;
-    }
- 
-    const data = await response.json();
-    availableEnhancements = data.types;
-    renderEnhancementUI();
-  } catch (error) {
-    console.error('Error loading enhancements:', error);
-  }
-}
- 
-// ===== RENDER ENHANCEMENT UI IN AI TAB =====
-function renderEnhancementUI() {
-  const aiTab = document.getElementById('ai-tab'); // Adjust selector if needed
-  if (!aiTab) return;
- 
-  let html = `
-    <div class="sidebar-section">
-      <h3>🎬 Video Enhancement</h3>
-      <p style="font-size: 0.75em; color: #06d6d9; margin-bottom: 10px;">
-        Use AI to enhance your video with professional effects
-      </p>
-  `;
- 
-  availableEnhancements.forEach(enhancement => {
-    html += `
-      <div style="margin-bottom: 12px; padding: 10px; background: rgba(157, 78, 221, 0.1); border-radius: 6px; border-left: 3px solid #9d4edd;">
-        <div style="font-size: 0.85em; font-weight: 600; color: #aef7ff; margin-bottom: 4px;">
-          ${enhancement.name}
-        </div>
-        <div style="font-size: 0.75em; color: #06d6d9; margin-bottom: 8px;">
-          ${enhancement.description}
-        </div>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <span style="font-size: 0.7em; color: #ff006e; font-weight: 600;">
-            💎 ${enhancement.tokens_cost} tokens
-          </span>
-          <button 
-            onclick="enhanceVideoWithType('${enhancement.id}')"
-            style="
-              flex: 1;
-              padding: 6px 10px;
-              font-size: 0.75em;
-              background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
-              border: none;
-              color: white;
-              border-radius: 4px;
-              cursor: pointer;
-              font-weight: 600;
-              transition: all 0.2s;
-            "
-            onmouseover="this.style.boxShadow='0 0 15px rgba(157, 78, 221, 0.5)'"
-            onmouseout="this.style.boxShadow='none'"
-          >
-            Apply
-          </button>
-        </div>
-      </div>
-    `;
-  });
- 
-  html += `
-    <div class="divider"></div>
-    <h3>📊 Enhancement History</h3>
-    <div id="enhancement-history" style="max-height: 150px; overflow-y: auto;">
-      <p style="font-size: 0.75em; color: #aef7ff;">Loading...</p>
-    </div>
-  </div>
-  `;
- 
-  aiTab.innerHTML = html;
-  loadEnhancementHistory();
-}
- 
-// ===== ENHANCE VIDEO WITH SELECTED TYPE =====
-async function enhanceVideoWithType(enhancementType) {
-  // Check if a video is loaded
-  if (!canvas || canvas.width === 0) {
-    alert('⚠️ Please load a video first');
-    return;
-  }
- 
-  // Check if media composer has items
-  if (!mediaComposer || mediaComposer.items.length === 0) {
-    alert('⚠️ Please add media to the timeline first');
-    return;
-  }
- 
-  if (isEnhancing) {
-    alert('⏳ Enhancement already in progress...');
-    return;
-  }
- 
-  try {
-    isEnhancing = true;
-    
-    // Show status message
-    const statusDiv = document.createElement('div');
-    statusDiv.id = 'enhancement-status';
-    statusDiv.style.cssText = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
-      color: white;
-      padding: 20px 30px;
-      border-radius: 10px;
-      z-index: 10000;
-      box-shadow: 0 0 30px rgba(157, 78, 221, 0.8);
-      text-align: center;
-      font-weight: 600;
-    `;
-    statusDiv.innerHTML = `
-      🎬 Enhancing your video...<br>
-      <span style="font-size: 0.9em; margin-top: 10px; display: block;">
-        Enhancement: <strong>${enhancementType}</strong>
-      </span>
-    `;
-    document.body.appendChild(statusDiv);
- 
-    // Export current composition as blob URL
-    const videoUrl = await exportCompositionAsUrl();
- 
-    // Call backend enhancement API
-    const response = await fetch('http://localhost:3001/api/ai/enhance', {
-      method: 'POST',
-      headers: auth.getAuthHeaders(),
-      body: JSON.stringify({
-        videoUrl: videoUrl,
-        enhancementType: enhancementType
-      })
-    });
- 
-    const data = await response.json();
- 
-    statusDiv.remove();
- 
-    if (!response.ok) {
-      alert(`❌ Enhancement failed: ${data.error}`);
-      console.error('Enhancement error:', data);
-      return;
-    }
- 
-    // Success!
-    lastEnhancedUrl = data.enhanced_video_url;
- 
-    // Show success message with details
-    const successDiv = document.createElement('div');
-    successDiv.style.cssText = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: linear-gradient(135deg, #06d6d9 0%, #06b6d4 100%);
-      color: white;
-      padding: 20px 30px;
-      border-radius: 10px;
-      z-index: 10000;
-      box-shadow: 0 0 30px rgba(6, 214, 217, 0.8);
-      text-align: center;
-      font-weight: 600;
-    `;
-    successDiv.innerHTML = `
-      ✅ Enhancement Complete!<br>
-      <span style="font-size: 0.85em; margin-top: 10px; display: block;">
-        Tokens Used: <strong>${data.tokens_used}</strong><br>
-        Remaining: <strong>${data.tokens_remaining}</strong><br>
-        Processing Time: <strong>${(data.processing_time_ms / 1000).toFixed(2)}s</strong>
-      </span>
-      <button onclick="downloadEnhancedVideo()" style="
-        margin-top: 15px;
-        padding: 8px 16px;
-        background: rgba(255, 255, 255, 0.3);
-        border: 1px solid white;
-        color: white;
-        border-radius: 4px;
-        cursor: pointer;
-        font-weight: 600;
-      ">
-        📥 Download Enhanced Video
-      </button>
-    `;
-    document.body.appendChild(successDiv);
- 
-    setTimeout(() => successDiv.remove(), 8000);
-    loadEnhancementHistory();
- 
-  } catch (error) {
-    console.error('Enhancement error:', error);
-    alert(`❌ Error: ${error.message}`);
-  } finally {
-    isEnhancing = false;
-  }
-}
- 
-// ===== EXPORT COMPOSITION AS URL FOR ENHANCEMENT =====
-async function exportCompositionAsUrl() {
-  return new Promise((resolve) => {
-    const chunks = [];
- 
-    const canvas2d = canvas.getContext('2d');
-    const videoTracks = [];
-    const audioTracks = [];
- 
-    // Get MediaRecorder stream from canvas
-    const stream = canvas.captureStream(30); // 30 FPS
- 
-    const mimeType = 'video/webm;codecs=vp9';
-    const mediaRecorder = new MediaRecorder(stream, { mimeType });
- 
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunks.push(event.data);
-      }
-    };
- 
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(chunks, { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      resolve(url);
-    };
- 
-    // Record the composition
-    const totalDuration = mediaComposer.items.length > 0 
-      ? Math.max(...mediaComposer.items.map(item => (item.start || 0) + (item.duration || 0)))
-      : 10;
- 
-    mediaRecorder.start();
- 
-    let startTime = Date.now();
-    let frameCount = 0;
- 
-    function renderFrame() {
-      const elapsed = (Date.now() - startTime) / 1000;
- 
-      if (elapsed >= totalDuration) {
-        mediaRecorder.stop();
-        return;
-      }
- 
-      // Render current frame
-      if (mediaComposer && typeof mediaComposer.renderFrame === 'function') {
-        mediaComposer.renderFrame(elapsed);
-
-        // Audio preview sync: start/pause audio based on its configured start time
-        if (previewAudioEl && audioTrack) {
-          const audioStart = Number.isFinite(audioTrack.start) ? audioTrack.start : 0;
-          if (elapsed >= audioStart) {
-            if (previewAudioEl.paused) {
-              try {
-                previewAudioEl.currentTime = Math.max(0, elapsed - audioStart);
-                previewAudioEl.play().catch(() => {});
-              } catch (e) { /* ignore play errors */ }
-            }
-          } else {
-            if (!previewAudioEl.paused) previewAudioEl.pause();
-          }
-        }
-
-        // Apply any GPU-backed timeline effects or simple transitions
-        applyCompositionEffects(elapsed);
-
-        setCompareOriginalFromCanvas();
-        renderTextOverlays(elapsed);
-      requestAnimationFrame(renderFrame);
-    }
- 
-    renderFrame();
-
-  }});
-}
- 
-// ===== DOWNLOAD ENHANCED VIDEO =====
-async function downloadEnhancedVideo() {
-  if (!lastEnhancedUrl) {
-    alert('No enhanced video available');
-    return;
-  }
- 
-  try {
-    // Fetch the enhanced video
-    const response = await fetch(lastEnhancedUrl);
-    const blob = await response.blob();
- 
-    // Create download link
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `enhanced-video-${Date.now()}.mp4`;
-    link.click();
- 
-    URL.revokeObjectURL(link.href);
-  } catch (error) {
-    console.error('Download error:', error);
-    alert(`Failed to download: ${error.message}`);
-  }
-}
- 
-// ===== LOAD ENHANCEMENT HISTORY =====
-async function loadEnhancementHistory() {
-  try {
-    const response = await fetch('http://localhost:3001/api/ai/enhancement-history', {
-      headers: auth.getAuthHeaders()
-    });
- 
-    if (!response.ok) return;
- 
-    const data = await response.json();
-    const historyDiv = document.getElementById('enhancement-history');
- 
-    if (!historyDiv) return;
- 
-    if (!data.enhancements || data.enhancements.length === 0) {
-      historyDiv.innerHTML = '<p style="font-size: 0.75em; color: #aef7ff;">No enhancements yet</p>';
-      return;
-    }
- 
-    let html = '';
-    data.enhancements.slice(0, 10).forEach(item => {
-      const date = new Date(item.created_at).toLocaleDateString();
-      html += `
-        <div style="padding: 8px; background: rgba(157, 78, 221, 0.1); margin-bottom: 6px; border-radius: 4px; font-size: 0.7em;">
-          <div style="color: #9d4edd; font-weight: 600;">${item.enhancement_type || 'Unknown'}</div>
-          <div style="color: #06d6d9;">🎯 ${item.tokens_used} tokens • ${date}</div>
-        </div>
-      `;
-    });
- 
-    historyDiv.innerHTML = html;
-  } catch (error) {
-    console.error('Error loading history:', error);
-  }
-}
 
     // ===== COMPARE MODE (Before/After Slider) =====
     let showCompareMode = false;
@@ -1431,7 +1120,6 @@ async function loadEnhancementHistory() {
     window.addEventListener('load', () => {
       initRangeSliderLabels();
       renderTimeline();
-      loadEnhancementOptions();
     });
   </script>
 </body>

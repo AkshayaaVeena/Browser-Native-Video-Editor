@@ -13,15 +13,19 @@ class MagicCut {
     const frameInterval = 0.5;
     const duration = this.video.duration || 60;
 
-    // Cache parameters to avoid forcing recalculation checks within the iteration loops
     const targetWidth = this.canvas.width;
     const targetHeight = this.canvas.height;
 
     for (let time = 0; time < duration; time += frameInterval) {
-      this.video.currentTime = time;
-      await new Promise(resolve => {
+      // Set up the listener BEFORE changing currentTime to avoid race condition
+      const seeked = new Promise(resolve => {
         this.video.addEventListener('seeked', resolve, { once: true });
       });
+      this.video.currentTime = time;
+      await seeked;
+
+      // Confirm video frame is actually ready before reading pixels
+      if (this.video.readyState < 2) continue;
 
       this.ctx.drawImage(this.video, 0, 0, targetWidth, targetHeight);
       const imageData = this.ctx.getImageData(0, 0, targetWidth, targetHeight);

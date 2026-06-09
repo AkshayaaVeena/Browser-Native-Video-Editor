@@ -201,6 +201,8 @@ class GPUProcessor {
 
     gl.useProgram(program);
 
+    gl.activeTexture(gl.TEXTURE0);
+
     // UPGRADE #2: Configure configuration filtering properties strictly ONCE upon initial allocation
     if (!this.videoTexture) {
       this.videoTexture = gl.createTexture();
@@ -212,8 +214,6 @@ class GPUProcessor {
     } else {
       gl.bindTexture(gl.TEXTURE_2D, this.videoTexture);
     }
-    
-    gl.activeTexture(gl.TEXTURE0);
     
     // UPGRADE #4: Force driver to natively correct orientation layout for raw HTML5 video tags
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
