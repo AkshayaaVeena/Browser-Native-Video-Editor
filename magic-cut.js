@@ -6,10 +6,40 @@ class MagicCut {
     this.moments = [];
     this.silences = [];
     this.cancelled = false;
+    this.audioContext = null;
+    this.audioSource = null;
   }
 
   cancel() {
     this.cancelled = true;
+  }
+
+  async dispose() {
+    this.cancel();
+    if (this.audioSource) {
+      try { this.audioSource.disconnect(); } catch (error) { /* already disconnected */ }
+      this.audioSource = null;
+    }
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      await this.audioContext.close().catch(() => {});
+    }
+    this.audioContext = null;
+  }
+
+  async getAudioGraph() {
+    if (!this.audioContext || this.audioContext.state === 'closed') {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (!this.audioSource) {
+      this.audioSource = this.audioContext.createMediaElementSource(this.video);
+    }
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume().catch(() => {});
+    }
+    return {
+      audioContext: this.audioContext,
+      source: this.audioSource
+    };
   }
 
   async detectMoments(onProgress) {
@@ -80,6 +110,10 @@ class MagicCut {
     return (brightness / 255) * 0.5 + movement * 0.5;
   }
 
+  // FIX #4: Replaced full HTTP re-fetch of the video file (which doubled memory usage
+  // and would crash the tab for large files) with createMediaElementSource, which
+  // taps the already-loaded video element directly via the Web Audio graph.
+  // Falls back gracefully if the video element cannot be used as an audio source.
   async detectSilences(threshold = -40, onProgress) {
     console.log('Detecting silences...');
     if (!this.video.src) {
@@ -87,37 +121,59 @@ class MagicCut {
       return [];
     }
 
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
     try {
-      const response = await fetch(this.video.src);
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      const { audioContext, source } = await this.getAudioGraph();
+      // Use createMediaElementSource so we tap the already-decoded media in memory
+      // instead of issuing a second HTTP/blob fetch of the entire file.
+      // We need an AnalyserNode to read amplitude data frame-by-frame.
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+      // Connect through to destination so the video audio still plays normally
+      // when the editor is playing (no silent side-effect).
+      analyser.connect(audioContext.destination);
 
-      const rawData = audioBuffer.getChannelData(0);
-      const sampleRate = audioBuffer.sampleRate;
-      const blockSize = 4096;
+      const duration = this.video.duration || 0;
+      if (duration === 0) {
+        source.disconnect(analyser);
+        analyser.disconnect();
+        return [];
+      }
+
+      const blockDuration = 0.1; // sample every 100 ms
+      const totalBlocks = Math.ceil(duration / blockDuration);
       const minSilenceDuration = 0.5;
       const detectedSilences = [];
-      let silenceStart = null;
-      const totalBlocks = Math.ceil(rawData.length / blockSize);
+      const timeDomainBuffer = new Float32Array(analyser.fftSize);
 
-      for (let block = 0, i = 0; i < rawData.length; block++, i += blockSize) {
+      let silenceStart = null;
+      const savedCurrentTime = this.video.currentTime;
+      const savedPaused = this.video.paused;
+
+      for (let block = 0; block < totalBlocks; block++) {
         if (this.cancelled) break;
 
-        const endLimit = Math.min(i + blockSize, rawData.length);
+        const targetTime = block * blockDuration;
+
+        // Seek the video to each sample position
+        await new Promise(resolve => {
+          const onSeeked = () => resolve();
+          this.video.addEventListener('seeked', onSeeked, { once: true });
+          this.video.currentTime = targetTime;
+        });
+
+        // Give the analyser one animation frame to fill its buffer
+        await new Promise(resolve => requestAnimationFrame(resolve));
+
+        analyser.getFloatTimeDomainData(timeDomainBuffer);
+
         let sumOfSquares = 0;
-        let count = 0;
-
-        for (let j = i; j < endLimit; j++) {
-          sumOfSquares += rawData[j] * rawData[j];
-          count++;
+        for (let i = 0; i < timeDomainBuffer.length; i++) {
+          sumOfSquares += timeDomainBuffer[i] * timeDomainBuffer[i];
         }
-
-        if (count === 0) continue;
-        const rms = Math.sqrt(sumOfSquares / count);
+        const rms = Math.sqrt(sumOfSquares / timeDomainBuffer.length);
         const db = 20 * Math.log10(Math.max(rms, 0.0001));
-        const currentTime = i / sampleRate;
+        const currentTime = targetTime;
 
         if (db < threshold) {
           if (silenceStart === null) {
@@ -140,13 +196,22 @@ class MagicCut {
         }
       }
 
-      await audioContext.close();
+      // Restore video position
+      this.video.currentTime = savedCurrentTime;
+      if (savedPaused) {
+        this.video.pause();
+      }
+
+      // Disconnect this analysis pass but keep the media source/context alive.
+      // Browsers only allow one MediaElementAudioSourceNode per video element.
+      source.disconnect(analyser);
+      analyser.disconnect();
+
       this.silences = detectedSilences;
       console.log('Detected silences setup complete:', detectedSilences.length);
       return detectedSilences;
     } catch (error) {
       console.error('Audio context processing track exception:', error);
-      await audioContext.close().catch(() => {});
       return [];
     }
   }

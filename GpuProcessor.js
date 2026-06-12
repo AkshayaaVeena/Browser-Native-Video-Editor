@@ -72,25 +72,28 @@ class GPUProcessor {
     gl.attachShader(program, fShader);
     gl.linkProgram(program);
 
+    // FIX #2: Check link status BEFORE calling useProgram or setting up attributes.
+    // Previously useProgram/vertexAttribPointer were called before this check,
+    // meaning a failed program would still be partially used.
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error('Program link error:', gl.getProgramInfoLog(program));
+      gl.deleteShader(vShader);
+      gl.deleteShader(fShader);
+      gl.deleteProgram(program);
+      return null;
+    }
+
+    gl.deleteShader(vShader);
+    gl.deleteShader(fShader);
+
     gl.useProgram(program);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuffer);
     const posLoc = gl.getAttribLocation(program, 'position');
     gl.enableVertexAttribArray(posLoc);
     gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
-    
-    program.positionLocation = posLoc;
-
-    gl.deleteShader(vShader);
-    gl.deleteShader(fShader);
-
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error('Program link error:', gl.getProgramInfoLog(program));
-      gl.deleteProgram(program);
-      return null;
-    }
 
     // UPGRADE #1: Pre-cache standard attributes & uniform maps once during registration
-    program.positionLocation = gl.getAttribLocation(program, 'position');
+    program.positionLocation = posLoc;
     program.uniforms = {};
     return program;
   }
@@ -133,9 +136,9 @@ class GPUProcessor {
     const imageLoc = this.getUniformLocation(program, 'image');
     if (imageLoc !== null) gl.uniform1i(imageLoc, 0);
     for (const key in uniforms) {
-  this.setUniform(program, key, uniforms[key]);
-   }
-   gl.drawArrays(gl.TRIANGLES, 0, 6);
+      this.setUniform(program, key, uniforms[key]);
+    }
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
   // Pipeline Method A: Handles static image/thumbnail parsing

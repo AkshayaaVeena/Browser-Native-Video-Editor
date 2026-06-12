@@ -4,6 +4,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+const rateLimit = require('express-rate-limit'); // FIX #6: rate limiting
 
 require('dotenv').config(); // Load environment variables from a .env file
 
@@ -58,8 +59,20 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
+// FIX #6: Rate limiter — max 20 auth attempts per IP per 15 minutes.
+// This prevents brute-force attacks on login and register endpoints.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, please try again later.' }
+});
+
+// Apply rate limiter to all /api/auth routes
+app.use('/api/auth/', authLimiter);
+
 // Initialize SQLite DB (file: veo.db)
-// REPLACE your old dbFile line with this:
 const dbFile = process.env.DATABASE_PATH 
   ? path.resolve(process.env.DATABASE_PATH) 
   : path.join(__dirname, 'veo.db');
@@ -74,7 +87,6 @@ db.serialize(() => {
     passwordHash TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
-
 });
 
 app.get('/', (req, res) => {
@@ -101,12 +113,10 @@ function getBearerToken(req) {
   return match ? match[1] : '';
 }
 
-// Correctly returning a promise-based string hash
 async function hashPassword(password) {
   return await bcrypt.hash(password, saltRounds);
 }
 
-// Correctly resolving the comparison asynchronously
 async function verifyPassword(password, storedHash) {
   if (!storedHash) return false;
   return await bcrypt.compare(password, storedHash);
@@ -115,6 +125,25 @@ async function verifyPassword(password, storedHash) {
 function signAuthToken(user) {
   return jwt.sign(
     { id: user.id, email: user.email, username: user.username },
+    JWT_SECRET,
+    { expiresIn: '30d' }
+  );
+}
+
+// FIX #3: Short-lived access token (15 min) + long-lived refresh token (30 days).
+// The client calls /api/auth/refresh with the refresh token to get a new access token
+// without forcing the user to log in again.
+function signAccessToken(user) {
+  return jwt.sign(
+    { id: user.id, email: user.email, username: user.username },
+    JWT_SECRET,
+    { expiresIn: '15m' }
+  );
+}
+
+function signRefreshToken(user) {
+  return jwt.sign(
+    { id: user.id, sub: 'refresh' },
     JWT_SECRET,
     { expiresIn: '30d' }
   );
@@ -142,7 +171,6 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
 
-    // Check if user exists
     db.get('SELECT id FROM users WHERE email = ?', [email], async (err, row) => {
       if (err) return res.status(500).json({ error: 'Unable to check account availability' });
       
@@ -151,10 +179,8 @@ app.post('/api/auth/register', async (req, res) => {
       }
 
       try {
-        // Await the generation of your bcrypt hash securely
         const securePasswordHash = await hashPassword(password);
 
-        // Create user
         db.run(
           `INSERT INTO users (email, username, passwordHash) VALUES (?, ?, ?)`,
           [email, username, securePasswordHash],
@@ -166,12 +192,16 @@ app.post('/api/auth/register', async (req, res) => {
               return res.status(500).json({ error: 'Unable to create account' });
             }
 
-            const token = signAuthToken({ id: this.lastID, email, username });
+            const user = { id: this.lastID, email, username };
+            // FIX #3: Return both access token and refresh token on register
+            const token = signAccessToken(user);
+            const refreshToken = signRefreshToken(user);
 
             res.json({
               success: true,
               token,
-              user: { id: this.lastID, email, username }
+              refreshToken,
+              user
             });
           }
         );
@@ -201,22 +231,54 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(401).json({ error: 'Invalid email or password' });
       }
 
-      // Securely evaluate the asynchronous bcrypt verification 
       const isPasswordValid = await verifyPassword(password, user.passwordHash);
       if (!isPasswordValid) {
         return res.status(401).json({ error: 'Invalid email or password' });
       }
 
-      const token = signAuthToken(user);
+      // FIX #3: Return both access token and refresh token on login
+      const token = signAccessToken(user);
+      const refreshToken = signRefreshToken(user);
 
       res.json({
         success: true,
         token,
+        refreshToken,
         user: { id: user.id, email: user.email, username: user.username }
       });
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// FIX #3: Refresh endpoint — accepts a valid refresh token and returns a new access token.
+// The client should store the refresh token (e.g. localStorage) and call this endpoint
+// when a 401 is received from any protected route, then retry the original request.
+app.post('/api/auth/refresh', (req, res) => {
+  try {
+    const refreshToken = getBearerToken(req);
+    if (!refreshToken) {
+      return res.status(401).json({ error: 'No refresh token provided' });
+    }
+
+    const decoded = jwt.verify(refreshToken, JWT_SECRET);
+
+    // Verify this is actually a refresh token (not an access token being reused)
+    if (decoded.sub !== 'refresh') {
+      return res.status(401).json({ error: 'Invalid token type' });
+    }
+
+    // Look up the user to make sure the account still exists
+    db.get('SELECT id, email, username FROM users WHERE id = ?', [decoded.id], (err, user) => {
+      if (err) return res.status(500).json({ error: 'Unable to verify account' });
+      if (!user) return res.status(401).json({ error: 'Account not found' });
+
+      const newToken = signAccessToken(user);
+      res.json({ success: true, token: newToken });
+    });
+  } catch (error) {
+    res.status(401).json({ error: 'Invalid or expired refresh token' });
   }
 });
 
@@ -259,7 +321,7 @@ app.get('/api/auth/profile', (req, res) => {
   }
 });
 
-// Logout endpoint (optional - just for cleanup)
+// Logout endpoint
 app.post('/api/auth/logout', (req, res) => {
   // Client-side will handle token removal
   res.json({ success: true, message: 'Logged out' });
@@ -268,7 +330,7 @@ app.post('/api/auth/logout', (req, res) => {
 // Start server
 const PORT = process.env.PORT || 3001;
 if (require.main === module) {
-  app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
+  app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 }
 
 module.exports = { app, db };

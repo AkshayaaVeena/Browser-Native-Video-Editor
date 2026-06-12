@@ -20,6 +20,7 @@ class MediaComposer {
       const video = document.createElement('video');
       
       const handleMetadata = () => {
+        video.removeEventListener('error', handleError);
         const sourceDuration = Number.isFinite(video.duration) ? video.duration : 0;
         const item = {
           id: `video-${Date.now()}-${Math.random()}`,
@@ -52,6 +53,8 @@ class MediaComposer {
       const handleError = (err) => {
         URL.revokeObjectURL(url); // CRITICAL: Clean up on error
         video.removeEventListener('loadedmetadata', handleMetadata);
+        video.removeEventListener('error', handleError);
+        video.removeAttribute('src');
         reject(new Error('Failed to load video'));
       };
 
@@ -68,6 +71,7 @@ class MediaComposer {
       const url = URL.createObjectURL(file);
 
       const handleImageLoad = () => {
+        img.removeEventListener('error', handleImageError);
         const item = {
           id: `image-${Date.now()}-${Math.random()}`,
           type: 'image',
@@ -96,6 +100,9 @@ class MediaComposer {
 
       const handleImageError = () => {
         URL.revokeObjectURL(url);
+        img.removeEventListener('load', handleImageLoad);
+        img.removeEventListener('error', handleImageError);
+        img.removeAttribute('src');
         reject(new Error('Failed to load image'));
       };
 
@@ -105,17 +112,36 @@ class MediaComposer {
     });
   }
 
+  disposeMediaItem(item) {
+    if (!item) return;
+
+    if (item.element && item.type === 'video') {
+      try {
+        item.element.pause();
+        item.element.removeAttribute('src');
+        item.element.load();
+      } catch (error) {
+        console.warn('Video disposal failed:', error);
+      }
+    } else if (item.element && item.type === 'image') {
+      item.element.removeAttribute('src');
+    }
+
+    if (item.url) {
+      URL.revokeObjectURL(item.url);
+      item.url = null;
+    }
+    item.element = null;
+    item.video = null;
+    item.image = null;
+  }
+
   // Remove media item safely
   removeMedia(id) {
     const index = this.items.findIndex(item => item.id === id);
     if (index !== -1) {
       const item = this.items[index];
-      if (item.url) URL.revokeObjectURL(item.url);
-      if (item.video) {
-        item.video.pause();
-        item.video.src = '';
-        item.video.load();
-      }
+      this.disposeMediaItem(item);
       delete this.lastSeekTimes[id];
       this.activeVideoIds.delete(id);
       this.items.splice(index, 1);
@@ -198,8 +224,11 @@ class MediaComposer {
   moveItem(id, newStartTime) {
     const item = this.getItemById(id);
     if (!item) return false;
+    const prev = item.startTime;
     item.startTime = Math.max(0, newStartTime);
-    if (this.compositionMode === 'sequential') {
+    // Only switch away from sequential if the position actually changed,
+    // indicating the user deliberately placed the clip at a non-sequential slot.
+    if (this.compositionMode === 'sequential' && item.startTime !== prev) {
       this.compositionMode = 'overlay';
     }
     return true;
@@ -235,19 +264,16 @@ class MediaComposer {
     if (!item || !Number.isFinite(deltaSeconds)) return false;
 
     const minDuration = 0.1;
-    const maxDelta = item.duration - minDuration;
-    const appliedDelta = Math.max(-maxDelta, Math.min(deltaSeconds, maxDelta));
+    // FIX: use sourceDuration as the max expandable size so dragging right
+    // can grow the clip back up to its original full length.
+    const maxDuration = item.sourceDuration
+      ? Math.max(0, item.sourceDuration - (item.trimStart || 0))
+      : item.duration;
 
-    if (appliedDelta === 0) return false;
-
-    item.duration = Math.max(minDuration, item.duration - appliedDelta);
-
-    if (item.type === 'video' && item.sourceDuration) {
-      const trimEnd = (item.trimStart || 0) + item.duration;
-      if (trimEnd > item.sourceDuration) {
-        item.duration = Math.max(minDuration, item.sourceDuration - (item.trimStart || 0));
-      }
-    }
+    // deltaSeconds > 0 means right handle dragged left (shrink).
+    // deltaSeconds < 0 means right handle dragged right (expand).
+    const newDuration = Math.min(maxDuration, Math.max(minDuration, item.duration - deltaSeconds));
+    item.duration = newDuration;
 
     if (this.compositionMode === 'sequential') {
       this.compositionMode = 'overlay';
@@ -589,12 +615,7 @@ class MediaComposer {
   // Clear all media safely
   clearAll() {
     this.items.forEach(item => {
-      if (item.url) URL.revokeObjectURL(item.url);
-      if (item.element && item.type === 'video') {
-        item.element.pause();
-        item.element.src = '';
-        item.element.load();
-      }
+      this.disposeMediaItem(item);
     });
     this.items = [];
     this.mediaItems = this.items;

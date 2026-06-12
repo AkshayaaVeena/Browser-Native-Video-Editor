@@ -1,23 +1,23 @@
 /* ===== GPU VIDEO EDITOR PRO - NEON PURPLE THEME ===== */
 
-html,
-body {
-  min-height: 100%;
-  overflow-y: auto;
-}
-
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+/* Allow the whole page to scroll freely — no locked viewport */
+html {
+  height: 100%;
+}
+
 body {
+  min-height: 100%;
   background: linear-gradient(135deg, #0a0015 0%, #1a0033 50%, #0a0015 100%);
   color: #fff;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  overflow-y: auto;
   overflow-x: hidden;
+  overflow-y: auto;         /* page scrolls vertically when content is tall */
 }
 
 /* ===== HEADER ===== */
@@ -29,6 +29,9 @@ body {
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 0 20px rgba(157, 78, 221, 0.3);
+  position: sticky;         /* header stays visible when page scrolls */
+  top: 0;
+  z-index: 100;
 }
 
 .header h1 {
@@ -36,34 +39,36 @@ body {
   background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
   font-weight: 700;
 }
 
-/* ===== MAIN CONTAINER ===== */
+/* ===== MAIN CONTAINER =====
+   Layout: sidebar fixed on right, workspace fills the rest.
+   The whole thing is min-height so it always fills the screen but
+   can grow taller — the page body scroll handles overflow.          */
 .container-main {
   display: flex;
   min-height: calc(100vh - 65px);
-  height: auto;
-  gap: 0;
   background: linear-gradient(135deg, #0f001a 0%, #1a0033 100%);
+  align-items: stretch;
 }
 
+/* ===== WORKSPACE ===== */
 .workspace {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding: 12px;
-  overflow: hidden;
   min-width: 0;
+  /* No overflow:hidden here — let content flow naturally */
 }
-
 
 /* ===== PREVIEW SECTION ===== */
 .preview-section {
   display: flex;
-  flex: 2.2;
-  min-height: 0;
+  gap: 0;
 }
 
 .preview-main {
@@ -76,7 +81,6 @@ body {
   border-radius: 10px;
   padding: 10px;
   box-shadow: 0 0 30px rgba(157, 78, 221, 0.4), inset 0 0 20px rgba(157, 78, 221, 0.1);
-  position: relative;
 }
 
 .preview-header-main {
@@ -87,28 +91,29 @@ body {
   background: rgba(6, 214, 217, 0.15);
   border-left: 3px solid #06d6d9;
   border-radius: 4px;
+  flex-shrink: 0;
 }
 
+/* Canvas wrapper: 16:9 ratio, fills available width, never overflows */
 .preview-canvas-wrapper {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  background: #000000;
+  width: 100%;
+  aspect-ratio: 16 / 9;     /* height follows width automatically */
+  background: #000;
   border: 1px solid rgba(157, 78, 221, 0.3);
   border-radius: 8px;
   overflow: hidden;
-  min-height: clamp(620px, 76vh, 980px);
-  aspect-ratio: 16 / 9;
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* min-height so it's always usable even on very narrow screens */
+  min-height: 200px;
 }
 
 .preview-canvas-wrapper canvas {
-  grid-area: 1 / 1;
   max-width: 100%;
   max-height: 100%;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  width: auto;
+  height: auto;
   display: block;
 }
 
@@ -121,6 +126,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .control-group {
@@ -175,19 +181,21 @@ body {
   box-shadow: 0 0 15px rgba(157, 78, 221, 0.4);
 }
 
-/* ===== TIMELINE SECTION ===== */
+/* ===== TIMELINE SECTION =====
+   Fixed height so it doesn't compete with the canvas.
+   Internal track area scrolls horizontally for long compositions. */
 .timeline-section {
-  flex: 0.9;
-  margin-top: 100px;
+  flex-shrink: 0;            /* never squish — always full height */
+  height: 180px;             /* fixed, comfortable height */
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   background: linear-gradient(135deg, rgba(6, 214, 217, 0.05) 0%, rgba(157, 78, 221, 0.05) 100%);
   border: 2px solid #06d6d9;
   border-radius: 10px;
-  padding: 10px;
+  padding: 8px 10px;
   box-shadow: 0 0 20px rgba(6, 214, 217, 0.2);
-  overflow: hidden;
+  /* no overflow:hidden — let the track-wrapper scroll */
 }
 
 .timeline-header {
@@ -195,8 +203,9 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 10px;
-  padding: 8px 0;
+  padding-bottom: 6px;
   border-bottom: 1px solid rgba(6, 214, 217, 0.3);
+  flex-shrink: 0;
 }
 
 .timeline-header h2 {
@@ -218,7 +227,7 @@ body {
   font-weight: 600;
 }
 
-.timeline-controls input {
+.timeline-controls input[type="range"] {
   width: 100px;
   height: 6px;
   background: linear-gradient(90deg, #9d4edd 0%, #ff006e 100%);
@@ -240,7 +249,7 @@ body {
 }
 
 .timeline-playback button {
-  padding: 6px 12px;
+  padding: 5px 10px;
   font-size: 0.85em;
   border: 1px solid #9d4edd;
   background: linear-gradient(135deg, rgba(157, 78, 221, 0.2) 0%, rgba(255, 0, 110, 0.2) 100%);
@@ -258,23 +267,28 @@ body {
 .timeline-ruler {
   display: flex;
   justify-content: space-between;
-  padding: 6px 0;
-  font-size: 0.75em;
+  padding: 3px 0;
+  font-size: 0.72em;
   color: #06d6d9;
   font-weight: 600;
   border-bottom: 1px dashed rgba(6, 214, 217, 0.2);
+  flex-shrink: 0;
 }
 
+/* The track wrapper scrolls — this is where horizontal overflow lives */
 .timeline-track-wrapper {
   flex: 1;
+  overflow-x: auto;          /* horizontal scroll for long timelines */
   overflow-y: auto;
-  overflow-x: auto;
+  min-height: 0;
 }
 
 .timeline-track {
   position: relative;
   min-width: 100%;
+  height: 100%;
   padding-right: 10px;
+  padding-bottom: 4px;
 }
 
 .playhead {
@@ -298,12 +312,12 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px;
-  margin-bottom: 6px;
+  padding: 4px 8px;
+  margin-bottom: 4px;
   background: rgba(157, 78, 221, 0.1);
   border: 1px solid rgba(157, 78, 221, 0.2);
   border-radius: 6px;
-  height: 70px;
+  height: 62px;
 }
 
 .lane-label {
@@ -314,21 +328,21 @@ body {
   background: rgba(157, 78, 221, 0.2);
   padding: 4px 8px;
   border-radius: 4px;
+  flex-shrink: 0;
 }
 
 .lane-blocks {
   position: relative;
   flex: 1;
-  min-height: 52px;
+  min-height: 46px;
   overflow: visible;
-  padding: 2px 0;
 }
 
 .block {
   position: absolute;
   top: 2px;
   min-width: 30px;
-  height: 48px;
+  height: 42px;
   background: linear-gradient(135deg, #9d4edd 0%, #ff006e 100%);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 5px;
@@ -342,6 +356,7 @@ body {
   box-shadow: 0 2px 8px rgba(157, 78, 221, 0.3);
   user-select: none;
   touch-action: none;
+  transition: box-shadow 0.15s;
 }
 
 .block:hover {
@@ -361,8 +376,15 @@ body {
 .block.dragging,
 .block.trimming {
   cursor: grabbing;
-  opacity: 0.92;
+  opacity: 0.88;
   z-index: 30;
+}
+
+/* Ghost slot shown while dragging in sequential mode */
+.block.drag-ghost {
+  opacity: 0.35;
+  pointer-events: none;
+  outline: 2px dashed #ffeb3b;
 }
 
 .block-label {
@@ -429,6 +451,7 @@ body {
   box-shadow: 0 0 8px rgba(255, 0, 110, 0.8);
 }
 
+/* ===== PROGRESS BARS ===== */
 #magicCutProgressWrap.active {
   display: block;
   margin-top: 8px;
@@ -477,6 +500,11 @@ body {
   flex-direction: column;
   flex-shrink: 0;
   box-shadow: -5px 0 30px rgba(157, 78, 221, 0.2);
+  /* Sidebar sticks to viewport — content inside scrolls */
+  position: sticky;
+  top: 65px;                 /* below the sticky header */
+  max-height: calc(100vh - 65px);
+  align-self: flex-start;
 }
 
 /* ===== SIDEBAR TABS ===== */
@@ -487,6 +515,7 @@ body {
   padding: 8px;
   background: rgba(0, 0, 0, 0.3);
   border-bottom: 2px solid #9d4edd;
+  flex-shrink: 0;
 }
 
 .sidebar-tab-btn {
@@ -679,7 +708,7 @@ body {
   color: white;
 }
 
-/* ===== SCROLLBAR ===== */
+/* ===== SCROLLBARS ===== */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -704,22 +733,42 @@ body {
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1200px) {
   .sidebar {
-    width: 300px;
+    width: 290px;
+  }
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: 260px;
   }
 }
 
 @media (max-width: 768px) {
-  .preview-section {
+  .container-main {
     flex-direction: column;
   }
 
-  .preview-canvas-wrapper {
-    min-height: 320px;
-  }
-  
+  /* On mobile the sidebar is no longer sticky — it just flows below */
   .sidebar {
     width: 100%;
+    position: static;
+    max-height: none;
     border-left: none;
     border-top: 2px solid #9d4edd;
+    border-radius: 0;
+  }
+
+  .timeline-section {
+    height: 160px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header h1 {
+    font-size: 0.95em;
+  }
+
+  .timeline-section {
+    height: 150px;
   }
 }
