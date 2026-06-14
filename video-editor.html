@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -8,17 +8,10 @@
   <script src="GpuProcessor.js"></script>
   <script src="magic-cut.js"></script>
   <script src="multi-media.js"></script>
-  <script src="auth-system.js"></script>
 </head>
 <body>
   <div class="header">
     <h1>🎬 GPU Video Editor Pro - Multi-Media Edition</h1>
-    <div style="display: flex; align-items: center; gap: 15px;">
-      <span id="userGreeting" style="font-size: 0.9em; color: #aaaaaa; border-right: 1px solid #555; padding-right: 15px;">👤 Loading...</span>
-      <button onclick="handleLogout()" style="background: linear-gradient(135deg, rgba(255, 0, 110, 0.2) 0%, rgba(157, 78, 221, 0.2) 100%); border: 1px solid #666; color: #fff; padding: 8px 14px; border-radius: 6px; font-size: 0.85em; cursor: pointer; transition: all 0.2s ease; font-weight: 600;" onmouseover="this.style.background='linear-gradient(135deg, #ff006e 0%, #9d4edd 100%)'" onmouseout="this.style.background='linear-gradient(135deg, rgba(255, 0, 110, 0.2) 0%, rgba(157, 78, 221, 0.2) 100%)'">
-        🔒 Logout
-      </button>
-    </div>
   </div>
 
   <div class="container-main">
@@ -52,7 +45,7 @@
           <h2>⏱️ Timeline</h2>
           <div class="timeline-controls">
             <label>Zoom:</label>
-            <input type="range" id="zoomSlider" min="5" max="200" value="40" style="width: 120px;">
+            <input type="range" id="zoomSlider" min="5" max="100" value="20" style="width: 120px;">
             <span class="timeline-zoom-value" id="zoomValue">20px/s</span>
             <div class="timeline-playback">
               <button onclick="playComposition()">▶</button>
@@ -333,30 +326,6 @@
   </div>
 
   <script>
-    // ===== AUTHENTICATION =====
-    window.addEventListener('load', () => {
-      if (typeof auth === 'undefined' || !auth.isAuthenticated()) {
-        console.warn('Not authenticated');
-        window.location.href = './login.html';
-      } else {
-        const userData = auth.getUser();
-        const greetingEl = document.getElementById('userGreeting');
-        if (greetingEl && userData) {
-          const nameToShow = userData.username || userData.email || 'User';
-          greetingEl.textContent = `👤 ${nameToShow}`;
-        }
-        console.log('✅ User authenticated');
-      }
-    });
-
-    function handleLogout() {
-      if (confirm('Logout?')) {
-        if (typeof stopComposition === 'function') stopComposition();
-        auth.logout();
-        window.location.href = './login.html';
-      }
-    }
-
     // ===== STATE =====
     const video = document.getElementById("video");
     const canvas = document.getElementById('canvas');
@@ -368,7 +337,7 @@
     let compositionPlaybackId = null;
     let textOverlays = [];
     let currentObjectUrl = null;
-    let pixelsPerSecond = 40;
+    let pixelsPerSecond = 20;
     let mediaComposer = null;
     let magicCut = null;
     let currentTextPosition = 'center';
@@ -978,10 +947,7 @@
           const label = document.createElement('span');
           label.className = 'block-label';
           const fileName = item.file?.name || `${item.type} ${index + 1}`;
-          const durStr = item.duration >= 60
-            ? Math.round(item.duration / 60) + 'm'
-            : item.duration.toFixed(1) + 's';
-          label.textContent = `${item.type === 'video' ? '🎬' : '🖼️'} ${fileName} [${durStr}]`;
+          label.textContent = `${item.type === 'video' ? '🎬' : '🖼️'} ${fileName}`;
           block.appendChild(label);
 
           const leftHandle = document.createElement('div');
@@ -1102,31 +1068,18 @@
         if (Math.abs(deltaPx) > 2) timelineInteraction.moved = true;
 
         if (timelineInteraction.mode === 'move') {
-          // FIX drag-to-front: compute new startTime directly from originStart + delta,
-          // clamped to 0. Bypass moveItem's sequential→overlay switch during the drag
-          // so we can preview position freely; the mode switch happens on drag-end.
-          const newStart = Math.max(0, timelineInteraction.originStart + deltaTime);
-          item.startTime = newStart;
-
-          // Update lane width live so the track wrapper scrolls if needed
-          const totalDuration = getTimelineDuration();
-          const laneEl = document.getElementById('mediaBlocks');
-          if (laneEl) laneEl.style.width = Math.max(timeToPixels(totalDuration), 300) + 'px';
-
+          mediaComposer.moveItem(item.id, timelineInteraction.originStart + deltaTime);
         } else if (timelineInteraction.trimEdge === 'left') {
-          // FIX trim: always reset to origin before applying delta so repeated
-          // pointermove events don't accumulate the trim incorrectly
           item.startTime = timelineInteraction.originStart;
-          item.duration  = timelineInteraction.originDuration;
+          item.duration = timelineInteraction.originDuration;
           item.trimStart = timelineInteraction.originTrimStart;
           mediaComposer.trimItemStart(item.id, deltaTime);
-
         } else if (timelineInteraction.trimEdge === 'right') {
-          // FIX trim right: reset duration to origin each move event (was missing)
           item.duration = timelineInteraction.originDuration;
           mediaComposer.trimItemEnd(item.id, deltaTime);
         }
 
+        // FIX #5: Only update the dragged block's CSS — no full DOM rebuild
         updateTimelineBlockPosition(timelineInteraction.itemId);
         renderCompositionFrame(compositionCurrentTime);
       });
@@ -1134,13 +1087,9 @@
       const endInteraction = (event) => {
         if (!timelineInteraction) return;
         if (timelineInteraction.moved) {
-          const item = mediaComposer?.getItemById(timelineInteraction.itemId);
-          if (item && timelineInteraction.mode === 'move') {
-            // Commit the position via moveItem so compositionMode is updated.
-            // item.startTime is already set correctly by pointermove.
-            mediaComposer.moveItem(item.id, item.startTime);
-          }
           pushHistory();
+          // FIX #5: Full re-render only on drag end so the lane width and all
+          // block positions are recalculated correctly after the move is committed
           renderTimeline();
         }
         suppressNextBlockClick = !!timelineInteraction.moved;

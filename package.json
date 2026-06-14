@@ -1,34 +1,14 @@
 {
-  "name": "browser-native-editor",
+  "name": "gpu-video-editor",
   "version": "1.0.0",
-  "main": "main.js",
-  "dependencies": {
-    "@google-cloud/video-intelligence": "^6.2.2",
-    "axios": "^1.17.0",
-    "bcrypt": "^6.0.0",
-    "cors": "^2.8.5",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
-    "express-rate-limit": "^7.3.1",
-    "jsonwebtoken": "^9.0.0",
-    "sqlite3": "^6.0.1"
-  },
-  
+  "description": "GPU-accelerated browser video editor",
+  "main": "backend-server.js",
   "scripts": {
     "start": "node backend-server.js",
-    "dev": "node backend-server.js",
-    "check": "node --check backend-server.js && node --check auth-system.js && node --check GpuProcessor.js && node --check magic-cut.js && node --check multi-media.js && node --check app.js",
-    "test": "npm run check && node --test"
+    "dev": "nodemon backend-server.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/AkshayaaVeena/https---github.com-AkshayaaVeena-Browser-Native-Video-Editor.git"
-  },
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/AkshayaaVeena/https---github.com-AkshayaaVeena-Browser-Native-Video-Editor/issues"
-  },
-  "homepage": "https://github.com/AkshayaaVeena/https---github.com-AkshayaaVeena-Browser-Native-Video-Editor#readme",
-  "description": ""
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.18.3"
+  }
 }
