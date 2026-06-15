@@ -1,4 +1,4 @@
-# 🎬 GPU Video Editor Pro
+# 🎬 GPU Video Editor 
 
 A browser-based video editor with WebGL-accelerated effects, multi-media composition, AI-assisted cutting, and offline frame-accurate export.
 
