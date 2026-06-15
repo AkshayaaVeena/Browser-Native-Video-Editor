@@ -1,6 +1,3 @@
-// ===== RESOURCE MANAGER =====
-// Tracks all GPU-allocated objects so they can be disposed cleanly on context
-// loss or component teardown — prevents the most common WebGL memory leaks.
 class ResourceManager {
   constructor() {
     this.textures = new Set();
@@ -43,7 +40,6 @@ class GPUProcessor {
     this._setupContextLossHandling();
   }
 
-  // ===== FIX 4: Safe context acquisition with WebGL2 → WebGL1 → experimental fallback =====
   static isWebGLAvailable() {
     try {
       const c = document.createElement('canvas');
@@ -58,13 +54,12 @@ class GPUProcessor {
         const gl = canvas.getContext(id, {
           alpha: true,
           preserveDrawingBuffer: true,
-          // failIfMajorPerformanceCaveat keeps us off the software rasteriser
           failIfMajorPerformanceCaveat: true
         });
         if (gl) return gl;
       } catch(e) { /* try next */ }
     }
-    // Last resort: allow software rendering rather than crashing entirely
+
     for (const id of ['webgl', 'experimental-webgl']) {
       try {
         const gl = canvas.getContext(id, { alpha: true, preserveDrawingBuffer: true });
@@ -111,13 +106,9 @@ class GPUProcessor {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-    // UNPACK_FLIP_Y_WEBGL is unreliable on Safari for video textures —
-    // we handle orientation in the shader instead (texCoord.y flip).
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   }
 
-  // ===== FIX 1: WebGL context loss & restoration =====
   _setupContextLossHandling() {
     if (!this.canvas) return;
 
@@ -125,7 +116,6 @@ class GPUProcessor {
       e.preventDefault();
       console.warn('WebGL context lost — switching to Canvas 2D fallback');
       this.useWebGL = false;
-      // Clear cached programs — they reference the lost context and must be rebuilt
       this.programCache = {};
       this.resources.clear();
       window.dispatchEvent(new CustomEvent('webgl:lost'));
@@ -139,7 +129,6 @@ class GPUProcessor {
   }
 
   _reinitGL() {
-    // Re-acquire context and rebuild all GPU state from scratch
     this.programCache = {};
     this.texture      = null;
     this.videoTexture = null;
@@ -149,7 +138,6 @@ class GPUProcessor {
     this.useWebGL = !!this.gl;
   }
 
-  // ===== SHADER COMPILATION =====
   compileShader(source, type) {
     const gl = this.gl;
     const shader = gl.createShader(type);
@@ -237,7 +225,6 @@ class GPUProcessor {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
-  // ===== PIPELINE A: Static image / thumbnail =====
   applyEffect(imageData, fragmentShaderSource, uniforms = {}) {
     if (!this.useWebGL) return imageData;
     const gl = this.gl;
@@ -273,9 +260,6 @@ class GPUProcessor {
     return new ImageData(result, this.canvas.width, this.canvas.height);
   }
 
-  // ===== PIPELINE B: Live video frame =====
-  // FIX 4 (Safari): use requestVideoFrameCallback when available so we only
-  // upload a new texture when the browser actually has a decoded frame ready.
   renderVideoFrame(video, fragmentShaderSource, uniforms = {}) {
     if (!this.useWebGL) return;
     const gl = this.gl;
@@ -303,9 +287,6 @@ class GPUProcessor {
       gl.bindTexture(gl.TEXTURE_2D, this.videoTexture);
     }
 
-    // FIX 4 (Safari): UNPACK_FLIP_Y_WEBGL is unreliable for HTMLVideoElement on
-    // Safari — we keep it off for video uploads and rely on the vertex shader's
-    // texCoord mapping instead (position * 0.5 + 0.5 naturally flips Y).
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // restore for image uploads
@@ -548,10 +529,8 @@ class GPUProcessor {
     `);
   }
 
-  // ===== FIX 2: Complete GPU resource cleanup =====
   destroy() {
     const gl = this.gl;
-    // Dispose programCache entries not already tracked by ResourceManager
     Object.values(this.programCache).forEach(p => {
       try { if (gl) gl.deleteProgram(p); } catch(e) {}
     });
