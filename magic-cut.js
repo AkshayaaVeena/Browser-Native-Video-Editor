@@ -39,11 +39,6 @@ class MagicCut {
     return { audioContext: this.audioContext, source: this.audioSource };
   }
 
-  // ===== FIX 6: Adaptive sampling — interval scales with duration =====
-  // Long videos (>5 min) used to sample every 0.5 s, which meant 600+ seeks
-  // for a 5-minute clip. This caused the browser to slow to a crawl and, on
-  // hour-long videos, crash the tab. We now pick a coarser interval for longer
-  // content and additionally skip obviously-dark (black) frames early.
   _getFrameInterval(duration) {
     if (duration > 3600) return 5.0;   // >1 hr  : every 5 s
     if (duration > 1800) return 3.0;   // >30 min: every 3 s
@@ -53,18 +48,16 @@ class MagicCut {
     return 0.5;                        // <1 min : every 0.5 s
   }
 
-  // FIX 6: Quick brightness check to skip black/mostly-dark frames without
-  // running the full analyzeFrame pipeline, saving both CPU and seek time.
   _isBlackFrame(imageData) {
     const data    = imageData.data;
     let   sumLuma = 0;
-    const step    = 32; // sample every 32nd pixel — fast enough for the check
+    const step    = 32; 
     let   count   = 0;
     for (let i = 0; i < data.length; i += 4 * step) {
       sumLuma += (data[i] * 299 + data[i+1] * 587 + data[i+2] * 114) / 1000;
       count++;
     }
-    return count > 0 && (sumLuma / count) < 12; // luma < 12/255 → effectively black
+    return count > 0 && (sumLuma / count) < 12; 
   }
 
   async detectMoments(onProgress) {
@@ -73,7 +66,6 @@ class MagicCut {
     const moments  = [];
     const duration = this.video.duration || 60;
 
-    // FIX 6: adaptive interval
     const frameInterval = this._getFrameInterval(duration);
     const totalSteps    = Math.max(1, Math.ceil(duration / frameInterval));
 
@@ -95,12 +87,10 @@ class MagicCut {
       this.ctx.drawImage(this.video, 0, 0, targetWidth, targetHeight);
       const imageData = this.ctx.getImageData(0, 0, targetWidth, targetHeight);
 
-      // FIX 6: fast black-frame skip — avoid full analysis on dark frames
       if (this._isBlackFrame(imageData)) {
         consecutiveBlackFrames++;
-        // After 3 consecutive black frames, accelerate: skip ahead by 5 intervals
         if (consecutiveBlackFrames >= 3) {
-          time  += frameInterval * 4; // the loop itself adds one more
+          time  += frameInterval * 4; 
           step  += 4;
           consecutiveBlackFrames = 0;
         }

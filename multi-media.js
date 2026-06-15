@@ -1,19 +1,15 @@
-// media-composer.js - FIXED VERSION
-// Handles multiple videos, images, and composition with proper resource cleanup.
-
 class MediaComposer {
   constructor(canvas, ctx) {
     this.canvas          = canvas;
     this.ctx             = ctx || canvas.getContext('2d');
     this.items           = [];
-    this.mediaItems      = this.items; // Alias for backward compat
+    this.mediaItems      = this.items; 
     this.selectedItem    = null;
     this.compositionMode = 'sequential';
     this.lastSeekTimes   = {};
     this.activeVideoIds  = new Set();
   }
 
-  // ===== ADD VIDEO =====
   addVideo(file, startTime = 0) {
     return new Promise((resolve, reject) => {
       const url   = URL.createObjectURL(file);
@@ -45,7 +41,7 @@ class MediaComposer {
         };
         this.items.push(item);
         this.lastSeekTimes[item.id] = -999;
-        console.log('✅ Video added:', item.id);
+        console.log('Video added:', item.id);
         resolve(item);
       };
 
@@ -63,7 +59,6 @@ class MediaComposer {
     });
   }
 
-  // ===== ADD IMAGE =====
   addImage(file, startTime = 0, duration = 5) {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -92,7 +87,7 @@ class MediaComposer {
           }
         };
         this.items.push(item);
-        console.log('✅ Image added:', item.id);
+        console.log('Image added:', item.id);
         resolve(item);
       };
 
@@ -109,26 +104,23 @@ class MediaComposer {
     });
   }
 
-  // ===== FIX 2: Complete media item disposal =====
-  // Previously used removeAttribute('src') which does NOT free the decoder.
-  // The correct sequence is: pause → set src='' → load() → null the reference.
   disposeMediaItem(item) {
     if (!item) return;
 
     if (item.type === 'video' && item.element) {
       try {
         item.element.pause();
-        item.element.src = '';   // FIX 2: releases the decoder and buffered data
-        item.element.load();     // FIX 2: forces the browser to abort the network request
+        item.element.src = '';   
+        item.element.load();     
       } catch(e) {
         console.warn('Video disposal error:', e);
       }
     } else if (item.type === 'image' && item.element) {
-      item.element.src = '';     // FIX 2: frees the decoded bitmap in memory
+      item.element.src = '';     
     }
 
     if (item.url) {
-      URL.revokeObjectURL(item.url); // FIX 2: release the Blob URL
+      URL.revokeObjectURL(item.url); 
       item.url = null;
     }
 
@@ -137,7 +129,6 @@ class MediaComposer {
     item.image   = null;
   }
 
-  // ===== REMOVE ITEM =====
   removeMedia(id) {
     const index = this.items.findIndex(item => item.id === id);
     if (index !== -1) {
@@ -151,7 +142,6 @@ class MediaComposer {
     return false;
   }
 
-  // ===== UPDATE PROPERTIES =====
   updateMedia(id, properties) {
     const item = this.items.find(item => item.id === id);
     if (item) {
@@ -269,7 +259,6 @@ class MediaComposer {
     return (item.trimStart || 0) + timelineOffset * (item.properties.speed || 1);
   }
 
-  // ===== RENDER =====
   renderFrame(currentTime) {
     if (!this.hasDrawableMediaAt(currentTime)) {
       this.activateVideosAt(currentTime);
@@ -366,7 +355,6 @@ class MediaComposer {
     this.activeVideoIds.clear();
   }
 
-  // ===== SEQUENTIAL MODE =====
   renderSequential(currentTime) {
     let timeOffset = 0;
     let drewFrame  = false;
@@ -391,7 +379,6 @@ class MediaComposer {
     return drewFrame;
   }
 
-  // ===== OVERLAY MODE =====
   renderOverlay(currentTime) {
     const sorted    = [...this.items].sort((a, b) => a.startTime - b.startTime);
     let   drewFrame = false;
@@ -412,7 +399,6 @@ class MediaComposer {
     return drewFrame;
   }
 
-  // ===== SPLIT MODE =====
   renderSplit(currentTime) {
     if (this.items.length === 0) return false;
 
@@ -461,7 +447,6 @@ class MediaComposer {
     return drewFrame;
   }
 
-  // ===== DRAW WITH TRANSFORMS =====
   drawMedia(item, time) {
     if (!item || !item.element) return false;
 
@@ -509,12 +494,11 @@ class MediaComposer {
     return false;
   }
 
-  // ===== COMPOSITION MODE =====
   setCompositionMode(mode) {
     const m = mode.toLowerCase();
     if (['sequential', 'overlay', 'split'].includes(m)) {
       this.compositionMode = m;
-      console.log('✅ Composition mode:', m);
+      console.log('Composition mode:', m);
       return true;
     }
     return false;
@@ -552,7 +536,6 @@ class MediaComposer {
     };
   }
 
-  // ===== CLEAR ALL — dispose every item to prevent leaks =====
   clearAll() {
     this.items.forEach(item => this.disposeMediaItem(item));
     this.items          = [];
@@ -560,7 +543,7 @@ class MediaComposer {
     this.selectedItem   = null;
     this.lastSeekTimes  = {};
     this.activeVideoIds.clear();
-    console.log('✅ All media cleared and disposed');
+    console.log('All media cleared and disposed');
   }
 
   getMediaItems() {

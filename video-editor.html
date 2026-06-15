@@ -9,19 +9,15 @@
   <script src="magic-cut.js"></script>
   <script src="multi-media.js"></script>
   <style>
-    /* ===== FIX 9: Touch-friendly minimum tap targets ===== */
     .btn-primary, .btn-secondary,
     .sidebar-group button, .sidebar-tab-btn,
     .timeline-playback button {
       min-height: 44px;
       min-width:  44px;
     }
-    /* FIX 9: kill 300 ms tap delay across all interactive elements */
     * { touch-action: manipulation; }
-    /* FIX 9: prevent accidental zoom on double-tap in the canvas area */
     canvas { touch-action: none; }
 
-    /* ===== Toast notification (Fix 5) ===== */
     #toast-container {
       position: fixed;
       bottom: 24px;
@@ -74,11 +70,10 @@
 </head>
 <body>
 
-<!-- ===== FIX 5: Toast container for global error notifications ===== -->
 <div id="toast-container"></div>
 
 <div class="header">
-  <h1>🎬 GPU Video Editor Pro - Multi-Media Edition</h1>
+  <h1>🎬 FlashCut</h1>
 </div>
 
 <div class="container-main">
@@ -136,7 +131,7 @@
         </div>
       </div>
     </div>
-  </div><!-- /workspace -->
+  </div>
 
   <div class="sidebar">
     <div class="sidebar-tabs">
@@ -317,7 +312,7 @@
     <!-- AI TAB -->
     <div id="ai-tab" class="sidebar-content">
       <div class="sidebar-section">
-        <h3>🤖 Magic Cut AI</h3>
+        <h3>🤖 Magic Cut</h3>
         <div class="sidebar-group full">
           <button onclick="startMagicCut()"            style="font-size:0.8em;padding:10px;">Analyze Video</button>
           <button onclick="applyMagicCutToTimeline()"  style="font-size:0.8em;padding:10px;">Apply Analysis</button>
@@ -351,7 +346,7 @@
           <div class="export-progress-label" id="exportProgressLabel">0%</div>
         </div>
         <div class="divider"></div>
-        <h3 style="font-size:0.9em;color:#aef7ff;margin-bottom:8px;">💾 Project</h3>
+        <h3 style="font-size:0.9em;color:#aef7ff;margin-bottom:8px;">💾 Save </h3>
         <div class="sidebar-group full">
           <button onclick="saveProject()" style="font-size:0.8em;padding:10px;">Save Project</button>
           <button onclick="loadProject()" style="font-size:0.8em;padding:10px;">Load Project</button>
@@ -365,13 +360,10 @@
         </div>
       </div>
     </div>
-  </div><!-- /sidebar -->
-</div><!-- /container-main -->
+  </div>
+</div>
 
 <script>
-// ======================================================================
-//  STATE
-// ======================================================================
 const video  = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx    = canvas.getContext('2d');
@@ -388,7 +380,7 @@ let magicCut                  = null;
 let currentTextPosition       = 'center';
 let currentTextStyle          = 'normal';
 let audioTracks               = [];
-let previewAudioEngine        = null;  // FIX 8: replaced loose Audio elements with AudioEngine
+let previewAudioEngine        = null;  
 let timelineEffects           = [];
 let clipTransitions           = [];
 let compositionCurrentTime    = 0;
@@ -416,9 +408,6 @@ const PROJECT_DB_VERSION  = 1;
 const LANE_LABEL_WIDTH    = 60;
 const EXPORT_FPS          = 30;
 
-// ======================================================================
-//  FIX 5: Centralised error boundary
-// ======================================================================
 class ErrorBoundary {
   constructor() {
     window.addEventListener('error', (event) => {
@@ -435,7 +424,6 @@ class ErrorBoundary {
   }
 
   _handle(message, isAsync = false) {
-    // Attempt auto-save so work is not lost
     try { _triggerAutoSave(true); } catch(e) {}
     showToast({
       message: `${isAsync ? 'Async error' : 'Error'}: ${message}. Your project was auto-saved.`,
@@ -445,7 +433,6 @@ class ErrorBoundary {
   }
 }
 
-// ===== Toast system =====
 function showToast({ message, type = 'info', action = null, duration = 5000 }) {
   const container = document.getElementById('toast-container');
   const toast     = document.createElement('div');
@@ -467,15 +454,11 @@ function showToast({ message, type = 'info', action = null, duration = 5000 }) {
   setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; }, duration);
   setTimeout(() => toast.remove(), duration + 300);
 }
-
-// ======================================================================
-//  FIX 8: Unified AudioEngine — single AudioContext, precise scheduling
-// ======================================================================
 class AudioEngine {
   constructor() {
     this.ctx    = null;
     this.master = null;
-    this.tracks = []; // { source, buffer, startTime, gainNode }
+    this.tracks = []; 
   }
 
   _ensureContext() {
@@ -493,21 +476,17 @@ class AudioEngine {
     this.tracks.push({ buffer, startTime: trackStartTime, vol, file });
   }
 
-  /**
-   * FIX 8: Start all tracks with exact scheduling.
-   * wallOffset = seconds into the composition where playback begins.
-   */
   play(wallOffset = 0) {
     this._ensureContext();
     this._stopSources();
 
     if (this.ctx.state === 'suspended') this.ctx.resume();
 
-    const now = this.ctx.currentTime + 0.05; // small safety buffer
+    const now = this.ctx.currentTime + 0.05; 
 
     this.tracks.forEach(track => {
-      const aStart = track.startTime; // when in the composition the audio starts
-      if (wallOffset >= aStart + track.buffer.duration) return; // already past
+      const aStart = track.startTime; 
+      if (wallOffset >= aStart + track.buffer.duration) return; 
 
       const bufferOffset = Math.max(0, wallOffset - aStart);
       const source       = this.ctx.createBufferSource();
@@ -523,7 +502,6 @@ class AudioEngine {
     });
   }
 
-  /** FIX 8: Seek — stop all sources and restart at the new position */
   seek(newOffset) {
     this._stopSources();
     this.play(newOffset);
@@ -556,12 +534,8 @@ class AudioEngine {
   }
 }
 
-// Singleton preview audio engine
 let audioEngine = new AudioEngine();
 
-// ======================================================================
-//  FIX 7: Chunked project storage with auto-save
-// ======================================================================
 const AUTOSAVE_INTERVAL_MS = 30_000; // 30 s
 const CHUNK_SIZE_BYTES     = 10 * 1024 * 1024; // 10 MB per chunk
 let   _lastAutoSave        = 0;
@@ -590,7 +564,6 @@ function _setAutosaveStatus(msg) {
   if (el) { el.textContent = msg; el.className = 'autosave-indicator saved'; }
 }
 
-/** Compress a string via CompressionStream (supported in all modern browsers) */
 async function _compress(str) {
   const bytes  = new TextEncoder().encode(str);
   const cs     = new CompressionStream('gzip');
@@ -630,15 +603,13 @@ async function _decompress(uint8) {
   return new TextDecoder().decode(buf);
 }
 
-/** Split a Uint8Array into ≤CHUNK_SIZE_BYTES pieces and store each in localStorage */
 function _saveChunks(key, data) {
-  // Remove any previous chunks first
   let i = 0;
   while (localStorage.getItem(`${key}_chunk_${i}`) !== null) {
     localStorage.removeItem(`${key}_chunk_${i}`);
     i++;
   }
-  // Encode to base64 for text storage
+
   const b64 = btoa(String.fromCharCode(...data));
   const chunkCount = Math.ceil(b64.length / CHUNK_SIZE_BYTES);
   localStorage.setItem(`${key}_chunks`, String(chunkCount));
@@ -665,7 +636,6 @@ function _loadChunks(key) {
   return bytes;
 }
 
-// Keep the last 3 auto-save slots
 const MAX_AUTOSAVES = 3;
 function _rotateAutoSaves() {
   const slots = [];
@@ -680,9 +650,6 @@ function _rotateAutoSaves() {
   return nextSlot;
 }
 
-// ======================================================================
-//  SOURCE VIDEO HELPER
-// ======================================================================
 async function resetMagicCutForSourceChange() {
   if (magicCut) { await magicCut.dispose?.(); magicCut = null; }
 }
@@ -702,9 +669,6 @@ function setSourceVideoFromItem(item) {
   }
 }
 
-// ======================================================================
-//  UNDO / REDO
-// ======================================================================
 function captureEditorState() {
   return {
     items: (mediaComposer?.items || []).map(item => ({
@@ -777,7 +741,7 @@ function pushHistory() {
   historyStack.push(snapshot);
   if (historyStack.length > 50) historyStack.shift();
   historyIndex = historyStack.length - 1;
-  _scheduleAutoSave(); // FIX 7: trigger auto-save on any state change
+  _scheduleAutoSave(); 
 }
 
 async function undo() {
@@ -791,9 +755,6 @@ async function redo() {
   await restoreEditorState(historyStack[historyIndex]);
 }
 
-// ======================================================================
-//  TRANSITIONS
-// ======================================================================
 function findTransitionPair() {
   const tolerance = 0.25;
   const pairs     = mediaComposer.getAdjacentPairs(tolerance);
@@ -838,14 +799,10 @@ function addTransition(type) {
   renderTimeline();
 }
 
-// ======================================================================
-//  AUDIO TRACKS  (FIX 8: routed through AudioEngine)
-// ======================================================================
 function addAudioTrack() {
   const file = document.getElementById('audioFile').files[0];
   if (!file) return;
 
-  // FIX 8: clear old tracks from the engine before replacing
   audioEngine.clearTracks();
   audioTracks.forEach(t => URL.revokeObjectURL(t.url));
   audioTracks = [];
@@ -855,13 +812,12 @@ function addAudioTrack() {
   const url   = URL.createObjectURL(file);
   audioTracks = [{ id: Date.now(), file, fileName: file.name, url, vol, start }];
 
-  // Pre-load into AudioEngine
   audioEngine.addTrack(file, start, vol).catch(err => {
     console.error('Audio decode error:', err);
     showToast({ message: 'Could not decode audio file.', type: 'error' });
   });
 
-  document.getElementById('audioStatus').textContent = '✅ Audio added';
+  document.getElementById('audioStatus').textContent = 'Audio added';
 }
 
 function previewAudio() {
@@ -869,9 +825,6 @@ function previewAudio() {
   playComposition();
 }
 
-// ======================================================================
-//  INIT
-// ======================================================================
 const effectPresets = {
   cinematic: { contrast: 1.3, saturation: 0.9 },
   vibrant:   { saturation: 1.8, contrast: 1.2 }
@@ -880,7 +833,7 @@ const effectPresets = {
 function initMediaComposer() {
   if (!mediaComposer) {
     mediaComposer = new MediaComposer(canvas, ctx);
-    console.log('✅ MediaComposer initialised');
+    console.log('MediaComposer initialised');
   }
 }
 
@@ -891,9 +844,6 @@ function switchTab(tabName, button) {
   if (tab) { tab.classList.add('active'); button.classList.add('active'); }
 }
 
-// ======================================================================
-//  EFFECTS
-// ======================================================================
 function extractFrameFromCanvas() {
   originalFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
   if (!gpu) {
@@ -988,9 +938,6 @@ function renderTextOverlays(currentTime) {
   });
 }
 
-// ======================================================================
-//  TIMELINE HELPERS
-// ======================================================================
 function getTimelineDuration() {
   if (!mediaComposer || mediaComposer.items.length === 0) return 60;
   return Math.max(mediaComposer.getTimelineEnd(), 1);
@@ -1050,9 +997,6 @@ function getActiveClipTransition(time) {
   return clipTransitions.find(tr => time >= tr.start && time < tr.end) || null;
 }
 
-// ======================================================================
-//  RENDER PIPELINE
-// ======================================================================
 function renderCompositionMedia(time) {
   initMediaComposer();
   if (!mediaComposer || mediaComposer.items.length === 0) return;
@@ -1135,9 +1079,6 @@ function applyCompositionEffects(currentTime) {
   } catch(err) { console.warn('applyCompositionEffects error', err); }
 }
 
-// ======================================================================
-//  PLAYBACK  (FIX 8: audio via AudioEngine)
-// ======================================================================
 function playComposition(fromTime) {
   initMediaComposer();
   if (!mediaComposer || mediaComposer.items.length === 0) {
@@ -1155,7 +1096,6 @@ function playComposition(fromTime) {
   const startAt    = compositionCurrentTime;
   const endAt      = getPlaybackEndTime();
 
-  // FIX 8: start audio engine at the composition offset
   if (audioTracks.length > 0) {
     audioEngine.play(startAt);
   }
@@ -1207,9 +1147,6 @@ function seekToTime(time) {
   if (audioTracks.length > 0) audioEngine.seek(clamped);
 }
 
-// ======================================================================
-//  MEDIA LIBRARY
-// ======================================================================
 function addMediaVideo() {
   const input   = document.createElement('input');
   input.type    = 'file';
@@ -1315,9 +1252,6 @@ function addPresetEffect(name) {
   });
 }
 
-// ======================================================================
-//  MAGIC CUT
-// ======================================================================
 function updateMagicCutProgress(fraction, label) {
   const wrap  = document.getElementById('magicCutProgressWrap');
   const fill  = document.getElementById('magicCutProgressFill');
@@ -1360,12 +1294,9 @@ function applyMagicCutToTimeline() {
   pushHistory();
   cutPoints.forEach(cp => timelineEffects.push({ type: 'cut', start: cp.start, end: cp.end, id: Date.now() + Math.random() }));
   renderTimeline();
-  document.getElementById('magicCutStatus').textContent = `✅ Applied ${cutPoints.length} cut points!`;
+  document.getElementById('magicCutStatus').textContent = `Applied ${cutPoints.length} cut points!`;
 }
 
-// ======================================================================
-//  EXPORT  (FIX 3: pre-decode audio, frame-accurate scheduling)
-// ======================================================================
 function updateExportProgress(elapsed, total) {
   const wrap  = document.getElementById('exportProgressWrap');
   const fill  = document.getElementById('exportProgressFill');
@@ -1399,7 +1330,6 @@ async function startExport() {
 
   const stream = exportCanvas.captureStream(EXPORT_FPS);
 
-  // ===== FIX 3: Pre-decode all audio BEFORE export starts =====
   exportAudioSources = [];
   if (audioTracks.length > 0) {
     document.getElementById('exportStatus').textContent = '⏳ Decoding audio...';
@@ -1408,8 +1338,6 @@ async function startExport() {
 
     for (const track of audioTracks) {
       try {
-        // FIX 3: decodeAudioData fully decodes to a buffer before playback,
-        // so the audio is guaranteed to be frame-aligned with the video.
         const response = await fetch(track.url);
         const buffer   = await exportAudioContext.decodeAudioData(await response.arrayBuffer());
         const source   = exportAudioContext.createBufferSource();
@@ -1425,8 +1353,6 @@ async function startExport() {
         const playDuration = Math.max(0, exportRange - Math.max(0, offset - inPoint));
 
         if (playDuration > 0 && bufferOffset < buffer.duration) {
-          // FIX 3: schedule with absolute AudioContext time + 0.1 s lead so the
-          // audio clock is running before the first video frame is encoded.
           const audioStartTime = exportAudioContext.currentTime + 0.1;
           source.start(
             audioStartTime,
@@ -1468,9 +1394,6 @@ async function startExport() {
     gpu = new GPUProcessor(off);
   }
 
-  // FIX 3: Frame-accurate render loop.
-  // Each frame is drawn at exactly frame/fps seconds, then we yield to let
-  // the MediaRecorder process the chunk before advancing to the next frame.
   for (let frame = 0; frame < totalFrames; frame++) {
     if (offlineExportCancelled) break;
 
@@ -1482,8 +1405,6 @@ async function startExport() {
 
     updateExportProgress(frame / EXPORT_FPS, totalDuration);
 
-    // FIX 3: yield for exactly one frame's worth of time so the browser
-    // can flush the MediaRecorder chunk and the UI remains responsive.
     const targetNext = performance.now() + frameDurationMs;
     await new Promise(resolve => setTimeout(resolve, Math.max(0, targetNext - performance.now())));
   }
@@ -1519,9 +1440,6 @@ async function startExport() {
   mediaRecorder.stop();
 }
 
-// ======================================================================
-//  PROJECT STORAGE  (FIX 7: chunked + compressed + auto-save)
-// ======================================================================
 function openProjectDb() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(PROJECT_DB_NAME, PROJECT_DB_VERSION);
@@ -1619,7 +1537,6 @@ function getProjectFileEntries() {
 async function pruneUnusedProjectFiles(validIds, previousRaw) {
   const raw = previousRaw ?? localStorage.getItem(PROJECT_STORAGE_KEY + '_chunks');
   if (!raw) return;
-  // Best-effort: we don't parse old chunk data; just skip silently.
 }
 
 function collectProjectState() {
@@ -1655,7 +1572,6 @@ function collectProjectState() {
   };
 }
 
-// FIX 7: Internal save function used by both manual save and auto-save
 async function _doSave(isAutoSave = false) {
   initMediaComposer();
   const fileEntries  = getProjectFileEntries();
@@ -1670,22 +1586,18 @@ async function _doSave(isAutoSave = false) {
   const state = collectProjectState();
   const json  = JSON.stringify(state);
 
-  // FIX 7: try CompressionStream-based chunked save; fall back to plain if API unavailable
   try {
     if (typeof CompressionStream !== 'undefined') {
       const compressed = await _compress(json);
       _saveChunks(PROJECT_STORAGE_KEY, compressed);
     } else {
-      // Fallback: plain JSON in chunks (no compression)
       const enc = new TextEncoder().encode(json);
       _saveChunks(PROJECT_STORAGE_KEY, enc);
     }
   } catch(e) {
-    // Last resort: write raw (may fail on quota)
     localStorage.setItem(PROJECT_STORAGE_KEY, json);
   }
 
-  // FIX 7: rotate auto-save slots so we keep the last 3
   if (isAutoSave) {
     const slot = _rotateAutoSaves();
     localStorage.setItem(`${PROJECT_STORAGE_KEY}_auto_${slot}`, String(Date.now()));
@@ -1715,7 +1627,6 @@ async function saveProject() {
 }
 
 async function loadProject() {
-  // FIX 7: try chunked+compressed first, fall back to legacy plain key
   let raw = null;
   try {
     const bytes = _loadChunks(PROJECT_STORAGE_KEY);
@@ -1728,7 +1639,7 @@ async function loadProject() {
     }
   } catch(e) { /* fall through */ }
 
-  if (!raw) raw = localStorage.getItem(PROJECT_STORAGE_KEY); // legacy
+  if (!raw) raw = localStorage.getItem(PROJECT_STORAGE_KEY); 
   if (!raw) { alert('No saved project found in this browser.'); return; }
 
   try {
@@ -1807,9 +1718,6 @@ async function loadProject() {
   }
 }
 
-// ======================================================================
-//  TIMELINE RENDER
-// ======================================================================
 function renderTimeline() {
   const mediaLane = document.getElementById('mediaBlocks');
   if (!mediaLane) return;
@@ -1966,9 +1874,6 @@ document.getElementById('zoomSlider').addEventListener('input', e => {
   renderTimeline();
 });
 
-// ======================================================================
-//  SLIDER LABELS
-// ======================================================================
 function initRangeSliderLabels() {
   const defs = [
     { id: 'transitionDuration', lbl: 'transitionDurationValue', fmt: v => `${Number(v).toFixed(1)}s` },
@@ -1992,9 +1897,6 @@ function initRangeSliderLabels() {
   });
 }
 
-// ======================================================================
-//  KEYBOARD SHORTCUTS
-// ======================================================================
 function isTypingTarget(el) {
   if (!el) return false;
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
@@ -2014,14 +1916,9 @@ function bindKeyboardShortcuts() {
   });
 }
 
-// ======================================================================
-//  BOOT
-// ======================================================================
 window.addEventListener('load', () => {
-  // FIX 5: install global error boundary
   new ErrorBoundary();
 
-  // FIX 4: listen for WebGL context loss/restore
   window.addEventListener('webgl:lost',     () => showToast({ message: 'GPU context lost — switched to Canvas 2D fallback.', type: 'error' }));
   window.addEventListener('webgl:restored', () => showToast({ message: 'GPU context restored.', type: 'success', duration: 3000 }));
 

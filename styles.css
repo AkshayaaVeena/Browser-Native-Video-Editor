@@ -1,10 +1,7 @@
-/* ===== GPU VIDEO EDITOR PRO - NEON PURPLE THEME ===== */
-
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  /* FIX 9: kill 300 ms tap delay on all interactive elements */
   touch-action: manipulation;
 }
 
@@ -21,7 +18,6 @@ body {
   overflow-y: auto;
 }
 
-/* ===== HEADER ===== */
 .header {
   background: linear-gradient(90deg, rgba(157, 78, 221, 0.2) 0%, rgba(255, 0, 110, 0.2) 100%);
   border-bottom: 2px solid #9d4edd;
@@ -110,7 +106,6 @@ body {
   width: auto;
   height: auto;
   display: block;
-  /* FIX 9: prevent double-tap zoom on the canvas */
   touch-action: none;
 }
 
@@ -134,7 +129,6 @@ body {
 
 /* ===== BUTTONS - PRIMARY ===== */
 .btn-primary {
-  /* FIX 9: iOS minimum tap target */
   min-height: 44px;
   min-width: 44px;
   padding: 9px 14px;
@@ -161,7 +155,6 @@ body {
 
 /* ===== BUTTONS - SECONDARY ===== */
 .btn-secondary {
-  /* FIX 9: iOS minimum tap target */
   min-height: 44px;
   min-width: 44px;
   padding: 7px 10px;
@@ -246,7 +239,6 @@ body {
   gap: 6px;
 }
 
-/* FIX 9: timeline playback buttons need tap targets too */
 .timeline-playback button {
   min-height: 44px;
   min-width: 44px;
@@ -516,7 +508,6 @@ body {
   flex-shrink: 0;
 }
 
-/* FIX 9: sidebar tab buttons need tap targets */
 .sidebar-tab-btn {
   min-height: 44px;
   min-width: 44px;
@@ -632,7 +623,6 @@ body {
   flex-direction: column;
 }
 
-/* FIX 9: sidebar action buttons also need tap targets */
 .sidebar-group button {
   min-height: 44px;
   min-width: 44px;
@@ -720,7 +710,7 @@ body {
   color: #06d6d9;
 }
 
-/* ===== TOAST NOTIFICATIONS (Fix 5) ===== */
+/* ===== TOAST NOTIFICATIONS ===== */
 #toast-container {
   position: fixed;
   bottom: 24px;
