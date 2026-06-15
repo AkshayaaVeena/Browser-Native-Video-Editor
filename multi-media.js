@@ -1,147 +1,147 @@
 // media-composer.js - FIXED VERSION
-// Handles multiple videos, images, and composition with proper optimization
+// Handles multiple videos, images, and composition with proper resource cleanup.
 
 class MediaComposer {
   constructor(canvas, ctx) {
-    this.canvas = canvas;
-    this.ctx = ctx || canvas.getContext('2d');
-    this.items = [];
-    this.mediaItems = this.items; // Alias for compatibility
-    this.selectedItem = null;
+    this.canvas          = canvas;
+    this.ctx             = ctx || canvas.getContext('2d');
+    this.items           = [];
+    this.mediaItems      = this.items; // Alias for backward compat
+    this.selectedItem    = null;
     this.compositionMode = 'sequential';
-    this.lastSeekTimes = {}; // Track last seek time per item to avoid excessive seeking
-    this.activeVideoIds = new Set();
+    this.lastSeekTimes   = {};
+    this.activeVideoIds  = new Set();
   }
 
-  // Add video to composition with proper cleanup
+  // ===== ADD VIDEO =====
   addVideo(file, startTime = 0) {
     return new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
+      const url   = URL.createObjectURL(file);
       const video = document.createElement('video');
-      
+
       const handleMetadata = () => {
         video.removeEventListener('error', handleError);
         const sourceDuration = Number.isFinite(video.duration) ? video.duration : 0;
         const item = {
-          id: `video-${Date.now()}-${Math.random()}`,
-          type: 'video',
-          file: file,
-          url: url,
-          element: video,
-          video: video,
-          startTime: startTime,
-          duration: sourceDuration,
+          id:             `video-${Date.now()}-${Math.random()}`,
+          type:           'video',
+          file,
+          url,
+          element:        video,
+          video,
+          startTime,
+          duration:       sourceDuration,
           sourceDuration,
-          trimStart: 0,
+          trimStart:      0,
           properties: {
-            opacity: 1,
-            scale: 1,
-            rotation: 0,
-            x: 0,
-            y: 0,
-            speed: 1,
+            opacity:   1,
+            scale:     1,
+            rotation:  0,
+            x:         0,
+            y:         0,
+            speed:     1,
             blendMode: 'source-over'
           }
         };
-        
         this.items.push(item);
-        this.lastSeekTimes[item.id] = -999; // Initialize seek tracker
+        this.lastSeekTimes[item.id] = -999;
         console.log('✅ Video added:', item.id);
         resolve(item);
       };
 
-      const handleError = (err) => {
-        URL.revokeObjectURL(url); // CRITICAL: Clean up on error
+      const handleError = () => {
+        URL.revokeObjectURL(url);
         video.removeEventListener('loadedmetadata', handleMetadata);
-        video.removeEventListener('error', handleError);
-        video.removeAttribute('src');
+        video.src = '';
+        video.load();
         reject(new Error('Failed to load video'));
       };
 
       video.addEventListener('loadedmetadata', handleMetadata, { once: true });
-      video.addEventListener('error', handleError, { once: true });
+      video.addEventListener('error', handleError,            { once: true });
       video.src = url;
     });
   }
 
-  // Add image to composition with proper cleanup
+  // ===== ADD IMAGE =====
   addImage(file, startTime = 0, duration = 5) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
 
-      const handleImageLoad = () => {
-        img.removeEventListener('error', handleImageError);
+      const handleLoad = () => {
+        img.removeEventListener('error', handleError);
         const item = {
-          id: `image-${Date.now()}-${Math.random()}`,
-          type: 'image',
-          file: file,
-          url: url,
-          element: img,
-          image: img,
-          startTime: startTime,
-          duration: duration,
+          id:          `image-${Date.now()}-${Math.random()}`,
+          type:        'image',
+          file,
+          url,
+          element:     img,
+          image:       img,
+          startTime,
+          duration,
           sourceDuration: duration,
-          trimStart: 0,
+          trimStart:   0,
           properties: {
-            opacity: 1,
-            scale: 1,
-            rotation: 0,
-            x: 0,
-            y: 0,
+            opacity:   1,
+            scale:     1,
+            rotation:  0,
+            x:         0,
+            y:         0,
             blendMode: 'source-over'
           }
         };
-
         this.items.push(item);
         console.log('✅ Image added:', item.id);
         resolve(item);
       };
 
-      const handleImageError = () => {
+      const handleError = () => {
         URL.revokeObjectURL(url);
-        img.removeEventListener('load', handleImageLoad);
-        img.removeEventListener('error', handleImageError);
-        img.removeAttribute('src');
+        img.removeEventListener('load', handleLoad);
+        img.src = '';
         reject(new Error('Failed to load image'));
       };
 
-      img.addEventListener('load', handleImageLoad, { once: true });
-      img.addEventListener('error', handleImageError, { once: true });
+      img.addEventListener('load',  handleLoad,  { once: true });
+      img.addEventListener('error', handleError, { once: true });
       img.src = url;
     });
   }
 
+  // ===== FIX 2: Complete media item disposal =====
+  // Previously used removeAttribute('src') which does NOT free the decoder.
+  // The correct sequence is: pause → set src='' → load() → null the reference.
   disposeMediaItem(item) {
     if (!item) return;
 
-    if (item.element && item.type === 'video') {
+    if (item.type === 'video' && item.element) {
       try {
         item.element.pause();
-        item.element.removeAttribute('src');
-        item.element.load();
-      } catch (error) {
-        console.warn('Video disposal failed:', error);
+        item.element.src = '';   // FIX 2: releases the decoder and buffered data
+        item.element.load();     // FIX 2: forces the browser to abort the network request
+      } catch(e) {
+        console.warn('Video disposal error:', e);
       }
-    } else if (item.element && item.type === 'image') {
-      item.element.removeAttribute('src');
+    } else if (item.type === 'image' && item.element) {
+      item.element.src = '';     // FIX 2: frees the decoded bitmap in memory
     }
 
     if (item.url) {
-      URL.revokeObjectURL(item.url);
+      URL.revokeObjectURL(item.url); // FIX 2: release the Blob URL
       item.url = null;
     }
+
     item.element = null;
-    item.video = null;
-    item.image = null;
+    item.video   = null;
+    item.image   = null;
   }
 
-  // Remove media item safely
+  // ===== REMOVE ITEM =====
   removeMedia(id) {
     const index = this.items.findIndex(item => item.id === id);
     if (index !== -1) {
-      const item = this.items[index];
-      this.disposeMediaItem(item);
+      this.disposeMediaItem(this.items[index]);
       delete this.lastSeekTimes[id];
       this.activeVideoIds.delete(id);
       this.items.splice(index, 1);
@@ -151,7 +151,7 @@ class MediaComposer {
     return false;
   }
 
-  // Update media properties
+  // ===== UPDATE PROPERTIES =====
   updateMedia(id, properties) {
     const item = this.items.find(item => item.id === id);
     if (item) {
@@ -166,14 +166,11 @@ class MediaComposer {
     return Math.max(...this.items.map(item => item.startTime + item.duration));
   }
 
-  // Get total composition duration
   getTotalDuration() {
     if (this.items.length === 0) return 0;
-
     if (this.compositionMode === 'sequential') {
       return this.items.reduce((sum, item) => sum + item.duration, 0);
     }
-
     return this.getTimelineEnd();
   }
 
@@ -187,17 +184,15 @@ class MediaComposer {
 
   getAdjacentPairs(gapTolerance = 0.05) {
     const sorted = this.getSortedItems();
-    const pairs = [];
-
+    const pairs  = [];
     for (let i = 0; i < sorted.length - 1; i++) {
-      const from = sorted[i];
-      const to = sorted[i + 1];
+      const from     = sorted[i];
+      const to       = sorted[i + 1];
       const boundary = from.startTime + from.duration;
       if (Math.abs(to.startTime - boundary) <= gapTolerance) {
         pairs.push({ from, to, boundary });
       }
     }
-
     return pairs;
   }
 
@@ -226,8 +221,6 @@ class MediaComposer {
     if (!item) return false;
     const prev = item.startTime;
     item.startTime = Math.max(0, newStartTime);
-    // Only switch away from sequential if the position actually changed,
-    // indicating the user deliberately placed the clip at a non-sequential slot.
     if (this.compositionMode === 'sequential' && item.startTime !== prev) {
       this.compositionMode = 'overlay';
     }
@@ -238,24 +231,21 @@ class MediaComposer {
     const item = this.getItemById(id);
     if (!item || !Number.isFinite(deltaSeconds)) return false;
 
-    const minDuration = 0.1;
-    const maxTrim = Math.max(0, item.duration - minDuration);
+    const minDuration  = 0.1;
+    const maxTrim      = Math.max(0, item.duration - minDuration);
     const appliedDelta = Math.max(-item.trimStart, Math.min(deltaSeconds, maxTrim));
-
     if (appliedDelta === 0) return false;
 
-    item.trimStart = (item.trimStart || 0) + appliedDelta;
-    item.startTime = Math.max(0, item.startTime + appliedDelta);
-    item.duration = Math.max(minDuration, item.duration - appliedDelta);
+    item.trimStart  = (item.trimStart || 0) + appliedDelta;
+    item.startTime  = Math.max(0, item.startTime + appliedDelta);
+    item.duration   = Math.max(minDuration, item.duration - appliedDelta);
 
     if (item.type === 'video' && item.sourceDuration) {
       const maxTrimStart = Math.max(0, item.sourceDuration - minDuration);
       item.trimStart = Math.min(item.trimStart, maxTrimStart);
     }
 
-    if (this.compositionMode === 'sequential') {
-      this.compositionMode = 'overlay';
-    }
+    if (this.compositionMode === 'sequential') this.compositionMode = 'overlay';
     return true;
   }
 
@@ -263,21 +253,15 @@ class MediaComposer {
     const item = this.getItemById(id);
     if (!item || !Number.isFinite(deltaSeconds)) return false;
 
-    const minDuration = 0.1;
-    // FIX: use sourceDuration as the max expandable size so dragging right
-    // can grow the clip back up to its original full length.
-    const maxDuration = item.sourceDuration
+    const minDuration  = 0.1;
+    const maxDuration  = item.sourceDuration
       ? Math.max(0, item.sourceDuration - (item.trimStart || 0))
       : item.duration;
 
-    // deltaSeconds > 0 means right handle dragged left (shrink).
-    // deltaSeconds < 0 means right handle dragged right (expand).
-    const newDuration = Math.min(maxDuration, Math.max(minDuration, item.duration - deltaSeconds));
+    const newDuration  = Math.min(maxDuration, Math.max(minDuration, item.duration - deltaSeconds));
     item.duration = newDuration;
 
-    if (this.compositionMode === 'sequential') {
-      this.compositionMode = 'overlay';
-    }
+    if (this.compositionMode === 'sequential') this.compositionMode = 'overlay';
     return true;
   }
 
@@ -285,7 +269,7 @@ class MediaComposer {
     return (item.trimStart || 0) + timelineOffset * (item.properties.speed || 1);
   }
 
-  // Main render method
+  // ===== RENDER =====
   renderFrame(currentTime) {
     if (!this.hasDrawableMediaAt(currentTime)) {
       this.activateVideosAt(currentTime);
@@ -296,38 +280,27 @@ class MediaComposer {
     this.ctx.fillStyle = '#000000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    let drewFrame = false;
-
-    if (this.compositionMode === 'sequential') {
-      drewFrame = this.renderSequential(currentTime);
-    } else if (this.compositionMode === 'overlay') {
-      drewFrame = this.renderOverlay(currentTime);
-    } else if (this.compositionMode === 'split') {
-      drewFrame = this.renderSplit(currentTime);
-    }
-
-    return drewFrame;
+    if (this.compositionMode === 'sequential') return this.renderSequential(currentTime);
+    if (this.compositionMode === 'overlay')    return this.renderOverlay(currentTime);
+    if (this.compositionMode === 'split')      return this.renderSplit(currentTime);
+    return false;
   }
 
   activateVideosAt(currentTime) {
     if (this.compositionMode === 'sequential') {
       let timeOffset = 0;
       for (const item of this.items) {
-        const itemStartTime = timeOffset;
-        const itemEndTime = timeOffset + item.duration;
-        if (currentTime >= itemStartTime && currentTime < itemEndTime && item.type === 'video') {
-          const itemTime = currentTime - itemStartTime;
-          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
+        const end = timeOffset + item.duration;
+        if (currentTime >= timeOffset && currentTime < end && item.type === 'video') {
+          this.syncVideoForPlayback(item, this.getSourceTime(item, currentTime - timeOffset));
         }
-        timeOffset = itemEndTime;
+        timeOffset = end;
       }
       return;
     }
-
     this.items.forEach(item => {
       if (item.type !== 'video' || !this.isItemActive(item, currentTime)) return;
-      const itemTime = currentTime - item.startTime;
-      this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
+      this.syncVideoForPlayback(item, this.getSourceTime(item, currentTime - item.startTime));
     });
   }
 
@@ -343,17 +316,14 @@ class MediaComposer {
     if (this.compositionMode !== 'sequential') {
       return currentTime >= item.startTime && currentTime < item.startTime + item.duration;
     }
-
     let timeOffset = 0;
     for (const candidate of this.items) {
-      const itemStartTime = timeOffset;
-      const itemEndTime = timeOffset + candidate.duration;
+      const end = timeOffset + candidate.duration;
       if (candidate.id === item.id) {
-        return currentTime >= itemStartTime && currentTime < itemEndTime;
+        return currentTime >= timeOffset && currentTime < end;
       }
-      timeOffset = itemEndTime;
+      timeOffset = end;
     }
-
     return false;
   }
 
@@ -361,25 +331,23 @@ class MediaComposer {
     const video = item.element;
     if (!video) return;
 
-    video.muted = true;
-    video.playsInline = true;
+    video.muted        = true;
+    video.playsInline  = true;
     video.playbackRate = item.properties.speed || 1;
 
     const wasInactive = !this.activeVideoIds.has(item.id);
-    const drift = Math.abs(video.currentTime - targetTime);
+    const drift       = Math.abs(video.currentTime - targetTime);
 
     if (wasInactive || drift > 0.5) {
-      video.currentTime = targetTime;
+      video.currentTime          = targetTime;
       this.lastSeekTimes[item.id] = targetTime;
     }
 
     this.activeVideoIds.add(item.id);
 
     if (video.paused) {
-      const playPromise = video.play();
-      if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(() => {});
-      }
+      const p = video.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
     }
   }
 
@@ -393,56 +361,48 @@ class MediaComposer {
 
   stopPlayback() {
     this.items.forEach(item => {
-      if (item.type === 'video' && item.element) {
-        item.element.pause();
-      }
+      if (item.type === 'video' && item.element) item.element.pause();
     });
     this.activeVideoIds.clear();
   }
 
-  // Sequential mode: videos play one after another
+  // ===== SEQUENTIAL MODE =====
   renderSequential(currentTime) {
     let timeOffset = 0;
-    let drewFrame = false;
+    let drewFrame  = false;
     const activeIds = new Set();
 
     for (const item of this.items) {
-      const itemStartTime = timeOffset;
-      const itemEndTime = timeOffset + item.duration;
-
-      if (currentTime >= itemStartTime && currentTime < itemEndTime) {
-        const itemTime = currentTime - itemStartTime;
-        
+      const end = timeOffset + item.duration;
+      if (currentTime >= timeOffset && currentTime < end) {
+        const itemTime = currentTime - timeOffset;
         if (item.type === 'video' && item.element) {
-          const targetTime = this.getSourceTime(item, itemTime);
           activeIds.add(item.id);
-          this.syncVideoForPlayback(item, targetTime);
+          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
           drewFrame = this.drawMedia(item, itemTime) || drewFrame;
         } else if (item.type === 'image' && item.element) {
           drewFrame = this.drawMedia(item, itemTime) || drewFrame;
         }
       }
-      timeOffset = itemEndTime;
+      timeOffset = end;
     }
 
     this.pauseInactiveVideos(activeIds);
     return drewFrame;
   }
 
-  // Overlay mode: all items play simultaneously
+  // ===== OVERLAY MODE =====
   renderOverlay(currentTime) {
-    const sortedItems = [...this.items].sort((a, b) => a.startTime - b.startTime);
-    let drewFrame = false;
+    const sorted    = [...this.items].sort((a, b) => a.startTime - b.startTime);
+    let   drewFrame = false;
     const activeIds = new Set();
 
-    for (const item of sortedItems) {
+    for (const item of sorted) {
       if (currentTime >= item.startTime && currentTime < item.startTime + item.duration) {
         const itemTime = currentTime - item.startTime;
-        
         if (item.type === 'video' && item.element) {
-          const targetTime = this.getSourceTime(item, itemTime);
           activeIds.add(item.id);
-          this.syncVideoForPlayback(item, targetTime);
+          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
         }
         drewFrame = this.drawMedia(item, itemTime) || drewFrame;
       }
@@ -452,29 +412,27 @@ class MediaComposer {
     return drewFrame;
   }
 
-  // Split mode: grid layout
+  // ===== SPLIT MODE =====
   renderSplit(currentTime) {
-    if (this.items.length === 0) return;
-    
-    const cols = Math.ceil(Math.sqrt(this.items.length));
-    const rows = Math.ceil(this.items.length / cols);
-    const cellWidth = this.canvas.width / cols;
+    if (this.items.length === 0) return false;
+
+    const cols       = Math.ceil(Math.sqrt(this.items.length));
+    const rows       = Math.ceil(this.items.length / cols);
+    const cellWidth  = this.canvas.width  / cols;
     const cellHeight = this.canvas.height / rows;
-    let drewFrame = false;
-    const activeIds = new Set();
+    let   drewFrame  = false;
+    const activeIds  = new Set();
 
     this.items.forEach((item, index) => {
       if (currentTime >= item.startTime && currentTime < item.startTime + item.duration) {
         const itemTime = currentTime - item.startTime;
-        
         if (item.type === 'video' && item.element) {
-          const targetTime = this.getSourceTime(item, itemTime);
           activeIds.add(item.id);
-          this.syncVideoForPlayback(item, targetTime);
+          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
         }
 
-        const row = Math.floor(index / cols);
-        const col = index % cols;
+        const row  = Math.floor(index / cols);
+        const col  = index % cols;
         const gridX = col * cellWidth;
         const gridY = row * cellHeight;
 
@@ -487,15 +445,14 @@ class MediaComposer {
         const prevY = item.properties.y;
         item.properties.x = gridX + prevX;
         item.properties.y = gridY + prevY;
-        
         drewFrame = this.drawMedia(item, itemTime) || drewFrame;
-        
         item.properties.x = prevX;
         item.properties.y = prevY;
+
         this.ctx.restore();
 
         this.ctx.strokeStyle = 'rgba(255, 0, 110, 0.4)';
-        this.ctx.lineWidth = 1.5;
+        this.ctx.lineWidth   = 1.5;
         this.ctx.strokeRect(gridX, gridY, cellWidth, cellHeight);
       }
     });
@@ -504,128 +461,108 @@ class MediaComposer {
     return drewFrame;
   }
 
-  // Draw media with transformations
+  // ===== DRAW WITH TRANSFORMS =====
   drawMedia(item, time) {
     if (!item || !item.element) return false;
-    
-    const props = item.properties;
-    this.ctx.save();
-    
-    this.ctx.globalAlpha = props.opacity !== undefined ? props.opacity : 1;
-    this.ctx.globalCompositeOperation = props.blendMode || 'source-over';
-    
-    const centerX = this.canvas.width / 2;
+
+    const props   = item.properties;
+    const centerX = this.canvas.width  / 2;
     const centerY = this.canvas.height / 2;
-    
+
+    this.ctx.save();
+    this.ctx.globalAlpha              = props.opacity  !== undefined ? props.opacity  : 1;
+    this.ctx.globalCompositeOperation = props.blendMode || 'source-over';
     this.ctx.translate(centerX + (props.x || 0), centerY + (props.y || 0));
-    if (props.rotation) {
-      this.ctx.rotate((props.rotation * Math.PI) / 180);
-    }
+    if (props.rotation) this.ctx.rotate((props.rotation * Math.PI) / 180);
     this.ctx.scale(props.scale || 1, props.scale || 1);
     this.ctx.translate(-centerX, -centerY);
 
-    // Draw video
     if (item.type === 'video' && item.element.readyState >= 2) {
-      const w = item.element.videoWidth || this.canvas.width;
-      const h = item.element.videoHeight || this.canvas.height;
+      const w     = item.element.videoWidth  || this.canvas.width;
+      const h     = item.element.videoHeight || this.canvas.height;
       const scale = Math.min(this.canvas.width / w, this.canvas.height / h);
-      
-      const displayWidth = w * scale;
-      const displayHeight = h * scale;
-      const x = (this.canvas.width - displayWidth) / 2;
-      const y = (this.canvas.height - displayHeight) / 2;
-      
+      const dw    = w * scale;
+      const dh    = h * scale;
+      const x     = (this.canvas.width  - dw) / 2;
+      const y     = (this.canvas.height - dh) / 2;
       try {
-        this.ctx.drawImage(item.element, x, y, displayWidth, displayHeight);
+        this.ctx.drawImage(item.element, x, y, dw, dh);
         this.ctx.restore();
         return true;
-      } catch (e) {
-        console.warn('Draw error:', e);
-      }
-    }
-    // Draw image
-    else if (item.type === 'image' && item.element && item.element.complete) {
-      const w = item.element.width || this.canvas.width;
-      const h = item.element.height || this.canvas.height;
+      } catch(e) { console.warn('Video draw error:', e); }
+    } else if (item.type === 'image' && item.element && item.element.complete) {
+      const w     = item.element.width  || this.canvas.width;
+      const h     = item.element.height || this.canvas.height;
       const scale = Math.min(this.canvas.width / w, this.canvas.height / h);
-      
-      const displayWidth = w * scale;
-      const displayHeight = h * scale;
-      const x = (this.canvas.width - displayWidth) / 2;
-      const y = (this.canvas.height - displayHeight) / 2;
-      
+      const dw    = w * scale;
+      const dh    = h * scale;
+      const x     = (this.canvas.width  - dw) / 2;
+      const y     = (this.canvas.height - dh) / 2;
       try {
-        this.ctx.drawImage(item.element, x, y, displayWidth, displayHeight);
+        this.ctx.drawImage(item.element, x, y, dw, dh);
         this.ctx.restore();
         return true;
-      } catch (e) {
-        console.warn('Draw error:', e);
-      }
+      } catch(e) { console.warn('Image draw error:', e); }
     }
 
     this.ctx.restore();
     return false;
   }
 
-  // Set composition mode
+  // ===== COMPOSITION MODE =====
   setCompositionMode(mode) {
-    const unifiedMode = mode.toLowerCase();
-    if (['sequential', 'overlay', 'split'].includes(unifiedMode)) {
-      this.compositionMode = unifiedMode;
-      console.log('✅ Composition mode:', unifiedMode);
+    const m = mode.toLowerCase();
+    if (['sequential', 'overlay', 'split'].includes(m)) {
+      this.compositionMode = m;
+      console.log('✅ Composition mode:', m);
       return true;
     }
     return false;
   }
 
-  // Get composition info
   getCompositionInfo() {
     return {
-      mode: this.compositionMode,
-      itemCount: this.items.length,
+      mode:          this.compositionMode,
+      itemCount:     this.items.length,
       totalDuration: this.getTotalDuration(),
-      items: this.items.map(item => ({
-        id: item.id,
-        type: item.type,
-        file: item.file?.name || 'unknown',
-        startTime: item.startTime,
-        duration: item.duration,
+      items:         this.items.map(item => ({
+        id:         item.id,
+        type:       item.type,
+        file:       item.file?.name || 'unknown',
+        startTime:  item.startTime,
+        duration:   item.duration,
         properties: item.properties
       }))
     };
   }
 
-  // Export metadata
   exportMetadata() {
     return {
-      version: '1.0',
-      mode: this.compositionMode,
-      canvas: { width: this.canvas.width, height: this.canvas.height },
-      items: this.items.map(item => ({
-        type: item.type,
-        fileName: item.file?.name || 'unknown',
-        startTime: item.startTime,
-        duration: item.duration,
+      version:   '1.0',
+      mode:      this.compositionMode,
+      canvas:    { width: this.canvas.width, height: this.canvas.height },
+      items:     this.items.map(item => ({
+        type:       item.type,
+        fileName:   item.file?.name || 'unknown',
+        startTime:  item.startTime,
+        duration:   item.duration,
         properties: item.properties
       })),
       createdAt: new Date().toISOString()
     };
   }
 
-  // Clear all media safely
+  // ===== CLEAR ALL — dispose every item to prevent leaks =====
   clearAll() {
-    this.items.forEach(item => {
-      this.disposeMediaItem(item);
-    });
-    this.items = [];
-    this.mediaItems = this.items;
-    this.selectedItem = null;
-    this.lastSeekTimes = {};
+    this.items.forEach(item => this.disposeMediaItem(item));
+    this.items          = [];
+    this.mediaItems     = this.items;
+    this.selectedItem   = null;
+    this.lastSeekTimes  = {};
     this.activeVideoIds.clear();
-    console.log('✅ All media cleared');
+    console.log('✅ All media cleared and disposed');
   }
 
-  // Get all items
   getMediaItems() {
     return this.items;
   }
