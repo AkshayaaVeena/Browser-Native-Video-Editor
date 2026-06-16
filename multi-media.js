@@ -730,7 +730,7 @@ class MediaComposer {
     this.selectedItem   = null;
     this.lastSeekTimes  = {};
     this.activeVideoIds.clear();
-    console.log('✅ All media cleared and disposed');
+    console.log('All media cleared and disposed');
   }
 
   getMediaItems() {
