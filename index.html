@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🎬 FlashCut</title>
+  <title> 🎬 FlashCut</title>
   <link rel="stylesheet" href="styles.css">
   <script src="GpuProcessor.js"></script>
   <script src="magic-cut.js"></script>
@@ -70,10 +70,11 @@
 </head>
 <body>
 
+<!-- ===== FIX 5: Toast container for global error notifications ===== -->
 <div id="toast-container"></div>
 
 <div class="header">
-  <h1>🎬 FlashCut</h1>
+  <h1>🎬 FlashCut/h1>
   <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Switch theme">
     <span id="themeIcon">🌙</span>
     <span id="themeLabel">Dark</span>
@@ -146,7 +147,7 @@
       <button class="sidebar-tab-btn" onclick="switchTab('color', this)">🎨 Color</button>
       <button class="sidebar-tab-btn" onclick="switchTab('filters', this)">✨ Filters</button>
       <button class="sidebar-tab-btn" onclick="switchTab('text', this)">📝 Text</button>
-      <button class="sidebar-tab-btn" onclick="switchTab('ai', this)">🤖 AI</button>
+      <button class="sidebar-tab-btn" onclick="switchTab('ai', this)">🤖 Magic Cut</button>
       <button class="sidebar-tab-btn" onclick="switchTab('export', this)">💾 Export</button>
     </div>
 
@@ -1043,16 +1044,18 @@ function getActiveClipTransition(time) {
   return clipTransitions.find(tr => time >= tr.start && time < tr.end) || null;
 }
 
-function renderCompositionMedia(time) {
+function renderCompositionMedia(time, overrideAllowAudio = null) {
   initMediaComposer();
   if (!mediaComposer || mediaComposer.items.length === 0) return;
 
+  const allowAudio = overrideAllowAudio !== null ? overrideAllowAudio : audioTracks.length === 0;
+
   const transition = getActiveClipTransition(time);
-  if (!transition) { mediaComposer.renderFrame(time); return; }
+  if (!transition) { mediaComposer.renderFrame(time, allowAudio); return; }
 
   const from = mediaComposer.getItemById(transition.fromId);
   const to   = mediaComposer.getItemById(transition.toId);
-  if (!from || !to) { mediaComposer.renderFrame(time); return; }
+  if (!from || !to) { mediaComposer.renderFrame(time, allowAudio); return; }
 
   ensureCrossfadeCanvases();
   const t    = (time - transition.start) / Math.max(0.001, transition.end - transition.start);
@@ -1097,7 +1100,8 @@ function renderCompositionFrame(time) {
     off.width = canvas.width; off.height = canvas.height;
     gpu = new GPUProcessor(off);
   }
-  renderCompositionMedia(time);
+  
+  renderCompositionMedia(time, false);
   applyCompositionEffects(time);
   renderTextOverlays(time);
   compositionCurrentTime = time;
@@ -1541,15 +1545,12 @@ async function startExport() {
     off.width = canvas.width; off.height = canvas.height;
     gpu = new GPUProcessor(off);
   }
-
-  
-  
   
   for (let frame = 0; frame < totalFrames; frame++) {
     if (offlineExportCancelled) break;
 
     const t = playbackStart + frame / EXPORT_FPS;
-    renderCompositionMedia(t);
+    renderCompositionMedia(t, false); 
     applyCompositionEffects(t);
     renderTextOverlays(t);
     exportCtx.drawImage(canvas, 0, 0);

@@ -40,12 +40,12 @@ class MediaComposer {
           type:            'video',
           file,
           url,
-          element:         video,
+          element:        video,
           video,
           startTime,
-          duration:        sourceDuration,
+          duration:       sourceDuration,
           sourceDuration,
-          trimStart:       0,
+          trimStart:      0,
           properties: {
             opacity:   1,
             scale:     1,
@@ -89,8 +89,8 @@ class MediaComposer {
           type:         'image',
           file,
           url,
-          element:      img,
-          image:        img,
+          element:     img,
+          image:       img,
           startTime,
           duration,
           sourceDuration: duration,
@@ -215,7 +215,7 @@ class MediaComposer {
     const itemTime = Math.max(0, Math.min(compositionTime - item.startTime, item.duration - 0.001));
 
     if (item.type === 'video' && item.element) {
-      this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
+      this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime), false);
     }
 
     const savedCtx = this.ctx;
@@ -295,7 +295,7 @@ class MediaComposer {
 
     const rightItem = {
       ...item,
-      id:          `${item.type}-${Date.now()}-${Math.random()}`,
+      id:         `${item.type}-${Date.now()}-${Math.random()}`,
       startTime:  item.startTime + offsetIntoItem,
       duration:   rightDuration,
       trimStart:  (item.trimStart || 0) + sourceOffsetConsumed,
@@ -330,14 +330,14 @@ class MediaComposer {
 
     const clipboardTrimStart = (item.trimStart || 0) + offsetIntoItemStart * speed;
     const clipboard = {
-      type:           item.type,
-      file:           item.file,
-      url:            item.url,
+      type:            item.type,
+      file:            item.file,
+      url:             item.url,
       sourceDuration: item.sourceDuration,
-      trimStart:      clipboardTrimStart,
-      duration:       cutDuration,
-      properties:     { ...item.properties },
-      cutAt:          Date.now()
+      trimStart:       clipboardTrimStart,
+      duration:        cutDuration,
+      properties:      { ...item.properties },
+      cutAt:           Date.now()
     };
     this._retainUrl(clipboard.url);
 
@@ -349,7 +349,7 @@ class MediaComposer {
       const rightTrimStart = (item.trimStart || 0) + offsetIntoItemEnd * speed;
       const rightItem = {
         ...item,
-        id:          `${item.type}-${Date.now()}-${Math.random()}`,
+        id:         `${item.type}-${Date.now()}-${Math.random()}`,
         startTime:  start, 
         duration:   rightDuration,
         trimStart:  rightTrimStart,
@@ -396,12 +396,12 @@ class MediaComposer {
       type:            clipboard.type,
       file:            clipboard.file,
       url:             clipboard.url,
-      element:         null, 
-      startTime:       t,
-      duration:        clipboard.duration,
+      element:        null, 
+      startTime:      t,
+      duration:       clipboard.duration,
       sourceDuration: clipboard.sourceDuration,
-      trimStart:       clipboard.trimStart,
-      properties:      { ...clipboard.properties }
+      trimStart:      clipboard.trimStart,
+      properties:     { ...clipboard.properties }
     };
 
     if (clipboard.type === 'video') {
@@ -425,6 +425,8 @@ class MediaComposer {
     this.items.splice(insertIndex, 0, newItem);
     this.lastSeekTimes[newItem.id] = -999;
     this._retainUrl(newItem.url); 
+                                   
+                                   
     this._retainUrl(newItem.url); 
 
     if (this.compositionMode === 'sequential') this.compositionMode = 'overlay';
@@ -438,7 +440,7 @@ class MediaComposer {
     this._releaseUrl(clipboard.url);
   }
 
-  renderFrame(currentTime) {
+  renderFrame(currentTime, allowAudio = true) {
     if (!this.hasDrawableMediaAt(currentTime)) {
       this.activateVideosAt(currentTime);
       return false;
@@ -448,8 +450,8 @@ class MediaComposer {
     this.ctx.fillStyle = '#000000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    if (this.compositionMode === 'sequential') return this.renderSequential(currentTime);
-    if (this.compositionMode === 'overlay')    return this.renderOverlay(currentTime);
+    if (this.compositionMode === 'sequential') return this.renderSequential(currentTime, allowAudio);
+    if (this.compositionMode === 'overlay')    return this.renderOverlay(currentTime, allowAudio);
     if (this.compositionMode === 'split')      return this.renderSplit(currentTime);
     return false;
   }
@@ -460,7 +462,7 @@ class MediaComposer {
       for (const item of this.items) {
         const end = timeOffset + item.duration;
         if (currentTime >= timeOffset && currentTime < end && item.type === 'video') {
-          this.syncVideoForPlayback(item, this.getSourceTime(item, currentTime - timeOffset));
+          this.syncVideoForPlayback(item, this.getSourceTime(item, currentTime - timeOffset), false);
         }
         timeOffset = end;
       }
@@ -468,7 +470,7 @@ class MediaComposer {
     }
     this.items.forEach(item => {
       if (item.type !== 'video' || !this.isItemActive(item, currentTime)) return;
-      this.syncVideoForPlayback(item, this.getSourceTime(item, currentTime - item.startTime));
+      this.syncVideoForPlayback(item, this.getSourceTime(item, currentTime - item.startTime), false);
     });
   }
 
@@ -495,11 +497,11 @@ class MediaComposer {
     return false;
   }
 
-  syncVideoForPlayback(item, targetTime) {
+  syncVideoForPlayback(item, targetTime, allowAudio = false) {
     const video = item.element;
     if (!video) return;
 
-    video.muted        = true;
+    video.muted        = !allowAudio;
     video.playsInline  = true;
     video.playbackRate = item.properties.speed || 1;
 
@@ -534,7 +536,7 @@ class MediaComposer {
     this.activeVideoIds.clear();
   }
 
-  renderSequential(currentTime) {
+  renderSequential(currentTime, allowAudio = true) {
     let timeOffset = 0;
     let drewFrame  = false;
     const activeIds = new Set();
@@ -545,7 +547,7 @@ class MediaComposer {
         const itemTime = currentTime - timeOffset;
         if (item.type === 'video' && item.element) {
           activeIds.add(item.id);
-          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
+          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime), allowAudio);
           drewFrame = this.drawMedia(item, itemTime) || drewFrame;
         } else if (item.type === 'image' && item.element) {
           drewFrame = this.drawMedia(item, itemTime) || drewFrame;
@@ -558,17 +560,23 @@ class MediaComposer {
     return drewFrame;
   }
 
-  renderOverlay(currentTime) {
+  renderOverlay(currentTime, allowAudio = true) {
     const sorted    = [...this.items].sort((a, b) => a.startTime - b.startTime);
     let   drewFrame = false;
     const activeIds = new Set();
+
+    const activeVideoCount = sorted.filter(item =>
+      item.type === 'video' && item.element &&
+      currentTime >= item.startTime && currentTime < item.startTime + item.duration
+    ).length;
+    const singleVideoActive = allowAudio && activeVideoCount === 1;
 
     for (const item of sorted) {
       if (currentTime >= item.startTime && currentTime < item.startTime + item.duration) {
         const itemTime = currentTime - item.startTime;
         if (item.type === 'video' && item.element) {
           activeIds.add(item.id);
-          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
+          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime), singleVideoActive);
         }
         drewFrame = this.drawMedia(item, itemTime) || drewFrame;
       }
@@ -593,7 +601,7 @@ class MediaComposer {
         const itemTime = currentTime - item.startTime;
         if (item.type === 'video' && item.element) {
           activeIds.add(item.id);
-          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime));
+          this.syncVideoForPlayback(item, this.getSourceTime(item, itemTime), false);
         }
 
         const row  = Math.floor(index / cols);
