@@ -418,7 +418,7 @@ let magicCut                  = null;
 let currentTextPosition       = 'center';
 let currentTextStyle          = 'normal';
 let audioTracks               = [];
-let previewAudioEngine        = null;  
+let previewAudioEngine        = null;
 let timelineEffects           = [];
 let clipTransitions           = [];
 let compositionCurrentTime    = 0;
@@ -432,7 +432,7 @@ let crossfadeCanvasB          = null;
 let exportAudioSources        = [];
 let exportAudioContext        = null;
 let selectedTimelineItemId    = null;
-let clipClipboard              = null; 
+let clipClipboard              = null;
 let timelineInteraction       = null;
 let timelineInteractionsBound = false;
 let suppressNextBlockClick    = false;
@@ -440,6 +440,8 @@ let isExporting               = false;
 let offlineExportCancelled    = false;
 let mediaRecorder             = null;
 let recordedChunks            = [];
+
+let _sliderRafId = null;
 
 const PROJECT_STORAGE_KEY = 'gpuVideoEditorProject';
 const PROJECT_DB_NAME     = 'GpuVideoEditorFiles';
@@ -463,7 +465,6 @@ class ErrorBoundary {
   }
 
   _handle(message, isAsync = false) {
-    
     try { _triggerAutoSave(true); } catch(e) {}
     showToast({
       message: `${isAsync ? 'Async error' : 'Error'}: ${message}. Your project was auto-saved.`,
@@ -499,7 +500,7 @@ class AudioEngine {
   constructor() {
     this.ctx    = null;
     this.master = null;
-    this.tracks = []; 
+    this.tracks = [];
   }
 
   _ensureContext() {
@@ -517,18 +518,17 @@ class AudioEngine {
     this.tracks.push({ buffer, startTime: trackStartTime, vol, file });
   }
 
-  
   play(wallOffset = 0) {
     this._ensureContext();
     this._stopSources();
 
     if (this.ctx.state === 'suspended') this.ctx.resume();
 
-    const now = this.ctx.currentTime + 0.05; 
+    const now = this.ctx.currentTime + 0.05;
 
     this.tracks.forEach(track => {
-      const aStart = track.startTime; 
-      if (wallOffset >= aStart + track.buffer.duration) return; 
+      const aStart = track.startTime;
+      if (wallOffset >= aStart + track.buffer.duration) return;
 
       const bufferOffset = Math.max(0, wallOffset - aStart);
       const source       = this.ctx.createBufferSource();
@@ -544,7 +544,6 @@ class AudioEngine {
     });
   }
 
-  
   seek(newOffset) {
     this._stopSources();
     this.play(newOffset);
@@ -579,8 +578,8 @@ class AudioEngine {
 
 let audioEngine = new AudioEngine();
 
-const AUTOSAVE_INTERVAL_MS = 30_000; 
-const CHUNK_SIZE_BYTES     = 10 * 1024 * 1024; 
+const AUTOSAVE_INTERVAL_MS = 30_000;
+const CHUNK_SIZE_BYTES     = 10 * 1024 * 1024;
 let   _lastAutoSave        = 0;
 let   _autoSaveTimer       = null;
 
@@ -647,13 +646,11 @@ async function _decompress(uint8) {
 }
 
 function _saveChunks(key, data) {
-  
   let i = 0;
   while (localStorage.getItem(`${key}_chunk_${i}`) !== null) {
     localStorage.removeItem(`${key}_chunk_${i}`);
     i++;
   }
-  
   const b64 = btoa(String.fromCharCode(...data));
   const chunkCount = Math.ceil(b64.length / CHUNK_SIZE_BYTES);
   localStorage.setItem(`${key}_chunks`, String(chunkCount));
@@ -687,7 +684,6 @@ function _rotateAutoSaves() {
     const raw = localStorage.getItem(`${PROJECT_STORAGE_KEY}_auto_${i}`);
     if (raw) slots.push({ idx: i, ts: parseInt(raw, 10) || 0 });
   }
-  
   const nextSlot = slots.length < MAX_AUTOSAVES
     ? slots.length
     : slots.sort((a, b) => a.ts - b.ts)[0].idx;
@@ -785,7 +781,7 @@ function pushHistory() {
   historyStack.push(snapshot);
   if (historyStack.length > 50) historyStack.shift();
   historyIndex = historyStack.length - 1;
-  _scheduleAutoSave(); 
+  _scheduleAutoSave();
 }
 
 async function undo() {
@@ -847,7 +843,6 @@ function addAudioTrack() {
   const file = document.getElementById('audioFile').files[0];
   if (!file) return;
 
-  
   audioEngine.clearTracks();
   audioTracks.forEach(t => URL.revokeObjectURL(t.url));
   audioTracks = [];
@@ -857,7 +852,6 @@ function addAudioTrack() {
   const url   = URL.createObjectURL(file);
   audioTracks = [{ id: Date.now(), file, fileName: file.name, url, vol, start }];
 
-  
   audioEngine.addTrack(file, start, vol).catch(err => {
     console.error('Audio decode error:', err);
     showToast({ message: 'Could not decode audio file.', type: 'error' });
@@ -879,7 +873,7 @@ const effectPresets = {
 function initMediaComposer() {
   if (!mediaComposer) {
     mediaComposer = new MediaComposer(canvas, ctx);
-    console.log('✅ MediaComposer initialised');
+    console.log(' MediaComposer initialised');
   }
 }
 
@@ -946,17 +940,99 @@ function addTextOverlay() {
 function deleteTextOverlay(id) { textOverlays = textOverlays.filter(t => t.id !== id); }
 
 function applySliderEffect() {
+  if (_sliderRafId) return;
+  _sliderRafId = requestAnimationFrame(() => {
+    _sliderRafId = null;
+    _doApplySliderEffect();
+  });
+}
+
+function _doApplySliderEffect() {
   if (!originalFrame) extractFrameFromCanvas();
   if (!originalFrame || !gpu) return;
+
   const bri = parseFloat(document.getElementById('brightnessSlider').value);
   const con = parseFloat(document.getElementById('contrastSlider').value);
   const sat = parseFloat(document.getElementById('saturationSlider').value);
   const blr = parseFloat(document.getElementById('blurSlider').value);
-  let result = originalFrame;
-  if (bri !== 1.0) result = gpu.brightness(result, bri);
-  if (con !== 1.0) result = gpu.contrast(result, con);
-  if (sat !== 1.0) result = gpu.saturation(result, sat);
-  if (blr !== 0)   result = gpu.blur(result, blr);
+
+  const chain = [];
+
+  if (bri !== 1.0) chain.push({
+    fragmentShaderSource: `
+      precision mediump float;
+      uniform sampler2D image;
+      uniform float brightness;
+      varying vec2 texCoord;
+      void main() {
+        vec4 color = texture2D(image, texCoord);
+        gl_FragColor = vec4(color.rgb * brightness, color.a);
+      }
+    `,
+    uniforms: { brightness: bri }
+  });
+
+  if (con !== 1.0) chain.push({
+    fragmentShaderSource: `
+      precision mediump float;
+      uniform sampler2D image;
+      uniform float contrast;
+      varying vec2 texCoord;
+      void main() {
+        vec4 color = texture2D(image, texCoord);
+        color.rgb = (color.rgb - 0.5) * contrast + 0.5;
+        gl_FragColor = color;
+      }
+    `,
+    uniforms: { contrast: con }
+  });
+
+  if (sat !== 1.0) chain.push({
+    fragmentShaderSource: `
+      precision mediump float;
+      uniform sampler2D image;
+      uniform float saturation;
+      varying vec2 texCoord;
+      void main() {
+        vec4 color = texture2D(image, texCoord);
+        float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+        gl_FragColor = vec4(mix(vec3(gray), color.rgb, saturation), color.a);
+      }
+    `,
+    uniforms: { saturation: sat }
+  });
+
+  if (blr > 0) chain.push({
+    fragmentShaderSource: `
+      precision mediump float;
+      uniform sampler2D image;
+      uniform float blur;
+      uniform vec2 u_resolution;
+      varying vec2 texCoord;
+      void main() {
+        vec2 step = vec2(blur) / u_resolution;
+        vec4 color = vec4(0.0);
+        color += texture2D(image, texCoord + vec2(-step.x, -step.y)) * 0.0625;
+        color += texture2D(image, texCoord + vec2(0.0,    -step.y)) * 0.125;
+        color += texture2D(image, texCoord + vec2( step.x, -step.y)) * 0.0625;
+        color += texture2D(image, texCoord + vec2(-step.x,  0.0))    * 0.125;
+        color += texture2D(image, texCoord + vec2(0.0,      0.0))    * 0.25;
+        color += texture2D(image, texCoord + vec2( step.x,  0.0))    * 0.125;
+        color += texture2D(image, texCoord + vec2(-step.x,  step.y)) * 0.0625;
+        color += texture2D(image, texCoord + vec2(0.0,      step.y)) * 0.125;
+        color += texture2D(image, texCoord + vec2( step.x,  step.y)) * 0.0625;
+        gl_FragColor = color;
+      }
+    `,
+    uniforms: { blur: blr }
+  });
+
+  if (chain.length === 0) {
+    ctx.putImageData(originalFrame, 0, 0);
+    return;
+  }
+
+  const result = gpu.applyEffectChain(originalFrame, chain);
   ctx.putImageData(result, 0, 0);
 }
 
@@ -1028,14 +1104,14 @@ function getPlaybackEndTime() {
   return outPoint != null ? Math.min(outPoint, total) : total;
 }
 
-function ensureCrossfadeCanvases() {
+function ensureCrossfadeCanvases(sizeRef = canvas) {
   if (!crossfadeCanvasA) {
     crossfadeCanvasA = document.createElement('canvas');
     crossfadeCanvasB = document.createElement('canvas');
   }
-  if (crossfadeCanvasA.width !== canvas.width) {
-    crossfadeCanvasA.width  = crossfadeCanvasB.width  = canvas.width;
-    crossfadeCanvasA.height = crossfadeCanvasB.height = canvas.height;
+  if (crossfadeCanvasA.width !== sizeRef.width || crossfadeCanvasA.height !== sizeRef.height) {
+    crossfadeCanvasA.width  = crossfadeCanvasB.width  = sizeRef.width;
+    crossfadeCanvasA.height = crossfadeCanvasB.height = sizeRef.height;
   }
 }
 
@@ -1043,7 +1119,7 @@ function getActiveClipTransition(time) {
   return clipTransitions.find(tr => time >= tr.start && time < tr.end) || null;
 }
 
-function renderCompositionMedia(time, overrideAllowAudio = null) {
+function renderCompositionMedia(time, overrideAllowAudio = null, targetCanvas = canvas, targetCtx = ctx) {
   initMediaComposer();
   if (!mediaComposer || mediaComposer.items.length === 0) return;
 
@@ -1056,37 +1132,37 @@ function renderCompositionMedia(time, overrideAllowAudio = null) {
   const to   = mediaComposer.getItemById(transition.toId);
   if (!from || !to) { mediaComposer.renderFrame(time, allowAudio); return; }
 
-  ensureCrossfadeCanvases();
+  ensureCrossfadeCanvases(targetCanvas);
   const t    = (time - transition.start) / Math.max(0.001, transition.end - transition.start);
   const ctxA = crossfadeCanvasA.getContext('2d');
   const ctxB = crossfadeCanvasB.getContext('2d');
   mediaComposer.renderOnlyItem(from, Math.min(time, from.startTime + from.duration - 0.001), ctxA);
   mediaComposer.renderOnlyItem(to,   Math.max(to.startTime, time), ctxB);
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  targetCtx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+  targetCtx.fillStyle = '#000000';
+  targetCtx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
 
   if (transition.type === 'zoom') {
-    ctx.save(); ctx.globalAlpha = 1 - t;
-    ctx.translate(canvas.width/2, canvas.height/2); ctx.scale(1 + t * 0.15, 1 + t * 0.15);
-    ctx.translate(-canvas.width/2, -canvas.height/2); ctx.drawImage(crossfadeCanvasA, 0, 0); ctx.restore();
-    ctx.save(); ctx.globalAlpha = t;
-    ctx.translate(canvas.width/2, canvas.height/2); ctx.scale(1.15 - t * 0.15, 1.15 - t * 0.15);
-    ctx.translate(-canvas.width/2, -canvas.height/2); ctx.drawImage(crossfadeCanvasB, 0, 0); ctx.restore();
+    targetCtx.save(); targetCtx.globalAlpha = 1 - t;
+    targetCtx.translate(targetCanvas.width/2, targetCanvas.height/2); targetCtx.scale(1 + t * 0.15, 1 + t * 0.15);
+    targetCtx.translate(-targetCanvas.width/2, -targetCanvas.height/2); targetCtx.drawImage(crossfadeCanvasA, 0, 0); targetCtx.restore();
+    targetCtx.save(); targetCtx.globalAlpha = t;
+    targetCtx.translate(targetCanvas.width/2, targetCanvas.height/2); targetCtx.scale(1.15 - t * 0.15, 1.15 - t * 0.15);
+    targetCtx.translate(-targetCanvas.width/2, -targetCanvas.height/2); targetCtx.drawImage(crossfadeCanvasB, 0, 0); targetCtx.restore();
   } else if (transition.type === 'slide') {
-    const off = canvas.width * t;
-    ctx.save(); ctx.globalAlpha = 1 - t; ctx.drawImage(crossfadeCanvasA, -off, 0); ctx.restore();
-    ctx.save(); ctx.globalAlpha = t;     ctx.drawImage(crossfadeCanvasB, canvas.width - off, 0); ctx.restore();
+    const off = targetCanvas.width * t;
+    targetCtx.save(); targetCtx.globalAlpha = 1 - t; targetCtx.drawImage(crossfadeCanvasA, -off, 0); targetCtx.restore();
+    targetCtx.save(); targetCtx.globalAlpha = t;     targetCtx.drawImage(crossfadeCanvasB, targetCanvas.width - off, 0); targetCtx.restore();
   } else {
-    ctx.save(); ctx.globalAlpha = 1 - t; ctx.drawImage(crossfadeCanvasA, 0, 0); ctx.restore();
-    ctx.save(); ctx.globalAlpha = t;     ctx.drawImage(crossfadeCanvasB, 0, 0); ctx.restore();
+    targetCtx.save(); targetCtx.globalAlpha = 1 - t; targetCtx.drawImage(crossfadeCanvasA, 0, 0); targetCtx.restore();
+    targetCtx.save(); targetCtx.globalAlpha = t;     targetCtx.drawImage(crossfadeCanvasB, 0, 0); targetCtx.restore();
   }
 
   if (transition.type === 'blur' && gpu) {
     try {
-      const blurred = gpu.blur(ctx.getImageData(0, 0, canvas.width, canvas.height), 4 * (1 - Math.abs(0.5 - t) * 2));
-      ctx.putImageData(blurred, 0, 0);
+      const blurred = gpu.blur(targetCtx.getImageData(0, 0, targetCanvas.width, targetCanvas.height), 4 * (1 - Math.abs(0.5 - t) * 2));
+      targetCtx.putImageData(blurred, 0, 0);
     } catch(e) {}
   }
 }
@@ -1099,7 +1175,7 @@ function renderCompositionFrame(time) {
     off.width = canvas.width; off.height = canvas.height;
     gpu = new GPUProcessor(off);
   }
-  
+
   renderCompositionMedia(time, false);
   applyCompositionEffects(time);
   renderTextOverlays(time);
@@ -1111,20 +1187,88 @@ function applyCompositionEffects(currentTime) {
   if (!gpu) return;
   const active = timelineEffects.filter(e => e && currentTime >= e.start && currentTime <= e.end);
   if (active.length === 0) return;
+
   try {
-    let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const sourceFrame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const chain = [];
+
     active.forEach(effect => {
-      try {
-        const v = effect.value;
-        if      (effect.type === 'brightness' && typeof v === 'number') frame = gpu.brightness(frame, v);
-        else if (effect.type === 'contrast'   && typeof v === 'number') frame = gpu.contrast(frame, v);
-        else if (effect.type === 'saturation' && typeof v === 'number') frame = gpu.saturation(frame, v);
-        else if (effect.type === 'blur'       && typeof v === 'number') frame = gpu.blur(frame, v);
-        else if (effect.type === 'grayscale')                            frame = gpu.grayscale(frame);
-        else if (effect.type === 'sepia')                                frame = gpu.sepia(frame);
-      } catch(e) { console.warn('Effect error:', e); }
+      const v = effect.value;
+      switch (effect.type) {
+        case 'brightness':
+          if (typeof v === 'number') chain.push({
+            fragmentShaderSource: `
+              precision mediump float; uniform sampler2D image; uniform float brightness; varying vec2 texCoord;
+              void main() { vec4 c = texture2D(image, texCoord); gl_FragColor = vec4(c.rgb * brightness, c.a); }
+            `,
+            uniforms: { brightness: v }
+          });
+          break;
+        case 'contrast':
+          if (typeof v === 'number') chain.push({
+            fragmentShaderSource: `
+              precision mediump float; uniform sampler2D image; uniform float contrast; varying vec2 texCoord;
+              void main() { vec4 c = texture2D(image, texCoord); c.rgb = (c.rgb - 0.5) * contrast + 0.5; gl_FragColor = c; }
+            `,
+            uniforms: { contrast: v }
+          });
+          break;
+        case 'saturation':
+          if (typeof v === 'number') chain.push({
+            fragmentShaderSource: `
+              precision mediump float; uniform sampler2D image; uniform float saturation; varying vec2 texCoord;
+              void main() { vec4 c = texture2D(image, texCoord); float g = dot(c.rgb, vec3(0.299,0.587,0.114)); gl_FragColor = vec4(mix(vec3(g), c.rgb, saturation), c.a); }
+            `,
+            uniforms: { saturation: v }
+          });
+          break;
+        case 'blur':
+          if (typeof v === 'number') chain.push({
+            fragmentShaderSource: `
+              precision mediump float; uniform sampler2D image; uniform float blur; uniform vec2 u_resolution; varying vec2 texCoord;
+              void main() {
+                vec2 s = vec2(blur) / u_resolution; vec4 c = vec4(0.0);
+                c += texture2D(image, texCoord + vec2(-s.x,-s.y)) * 0.0625;
+                c += texture2D(image, texCoord + vec2(0.0, -s.y)) * 0.125;
+                c += texture2D(image, texCoord + vec2( s.x,-s.y)) * 0.0625;
+                c += texture2D(image, texCoord + vec2(-s.x, 0.0)) * 0.125;
+                c += texture2D(image, texCoord                   ) * 0.25;
+                c += texture2D(image, texCoord + vec2( s.x, 0.0)) * 0.125;
+                c += texture2D(image, texCoord + vec2(-s.x, s.y)) * 0.0625;
+                c += texture2D(image, texCoord + vec2(0.0,  s.y)) * 0.125;
+                c += texture2D(image, texCoord + vec2( s.x, s.y)) * 0.0625;
+                gl_FragColor = c;
+              }
+            `,
+            uniforms: { blur: v }
+          });
+          break;
+        case 'grayscale':
+          chain.push({
+            fragmentShaderSource: `
+              precision mediump float; uniform sampler2D image; varying vec2 texCoord;
+              void main() { vec4 c = texture2D(image, texCoord); float g = dot(c.rgb, vec3(0.299,0.587,0.114)); gl_FragColor = vec4(vec3(g), c.a); }
+            `,
+            uniforms: {}
+          });
+          break;
+        case 'sepia':
+          chain.push({
+            fragmentShaderSource: `
+              precision mediump float; uniform sampler2D image; varying vec2 texCoord;
+              void main() { vec4 c = texture2D(image, texCoord); vec3 s; s.r=dot(c.rgb,vec3(0.393,0.769,0.189)); s.g=dot(c.rgb,vec3(0.349,0.686,0.168)); s.b=dot(c.rgb,vec3(0.272,0.534,0.131)); gl_FragColor=vec4(s,c.a); }
+            `,
+            uniforms: {}
+          });
+          break;
+        default:
+          break;
+      }
     });
-    ctx.putImageData(frame, 0, 0);
+
+    if (chain.length === 0) return;
+    const result = gpu.applyEffectChain(sourceFrame, chain);
+    ctx.putImageData(result, 0, 0);
   } catch(err) { console.warn('applyCompositionEffects error', err); }
 }
 
@@ -1145,7 +1289,6 @@ function playComposition(fromTime) {
   const startAt    = compositionCurrentTime;
   const endAt      = getPlaybackEndTime();
 
-  
   if (audioTracks.length > 0) {
     audioEngine.play(startAt);
   }
@@ -1175,7 +1318,7 @@ function pauseComposition() {
   isPlayingComposition = false;
   if (compositionPlaybackId) cancelAnimationFrame(compositionPlaybackId);
   if (mediaComposer) mediaComposer.stopPlayback();
-  audioEngine.pause(); 
+  audioEngine.pause();
 }
 
 function togglePlayback() {
@@ -1193,7 +1336,6 @@ function seekToTime(time) {
   const clamped = Math.max(0, Math.min(time, getTimelineDuration()));
   pauseComposition();
   renderCompositionFrame(clamped);
-  
   if (audioTracks.length > 0) audioEngine.seek(clamped);
 }
 
@@ -1285,7 +1427,7 @@ function splitSelectedClip() {
     return;
   }
   pushHistory();
-  selectedTimelineItemId = result.right.id; 
+  selectedTimelineItemId = result.right.id;
   renderTimeline();
   updateMediaLibrary();
   showToast({ message: '✂️ Clip split at ' + compositionCurrentTime.toFixed(2) + 's', type: 'success', duration: 2500 });
@@ -1298,7 +1440,7 @@ function cutSelectedRange() {
     return;
   }
   const rangeStart = inPoint;
-  const rangeEnd    = outPoint != null ? outPoint : getTimelineDuration();
+  const rangeEnd   = outPoint != null ? outPoint : getTimelineDuration();
   if (rangeEnd - rangeStart <= 0.05) {
     showToast({ message: 'Set an in/out range first (press I and O) before cutting.', type: 'error' });
     return;
@@ -1310,13 +1452,10 @@ function cutSelectedRange() {
     return;
   }
 
-  
-  
   if (clipClipboard) mediaComposer.discardClipboard(clipClipboard);
   clipClipboard = clipboard;
   pushHistory();
 
-  
   const cutDuration = clipboard.duration;
   if (compositionCurrentTime >= rangeEnd) compositionCurrentTime -= cutDuration;
   if (outPoint != null && outPoint >= rangeEnd) outPoint -= cutDuration;
@@ -1462,6 +1601,42 @@ function resetExportProgress() {
 
 function cancelOfflineExport() { offlineExportCancelled = true; }
 
+function _seekAllVideosToTime(compositionTime) {
+  if (!mediaComposer) return Promise.resolve();
+
+  const promises = [];
+
+  for (const item of mediaComposer.items) {
+    if (item.type !== 'video' || !item.element) continue;
+
+    const active = mediaComposer.isItemActive(item, compositionTime);
+    if (!active) {
+
+      if (!item.element.paused) item.element.pause();
+      continue;
+    }
+
+    const itemLocalTime = compositionTime - item.startTime;
+    const sourceTime    = mediaComposer.getSourceTime(item, itemLocalTime);
+    const clampedTime   = Math.max(0, Math.min(sourceTime, (item.sourceDuration || item.duration) - 0.001));
+    const drift         = Math.abs(item.element.currentTime - clampedTime);
+
+    if (drift > 0.01) {
+      promises.push(new Promise(resolve => {
+        const onSeeked = () => {
+          item.element.removeEventListener('error', onSeeked);
+          resolve();
+        };
+        item.element.addEventListener('seeked', onSeeked, { once: true });
+        item.element.addEventListener('error',  onSeeked, { once: true });
+        item.element.currentTime = clampedTime;
+      }));
+    }
+  }
+
+  return Promise.all(promises);
+}
+
 async function startExport() {
   if (!mediaComposer || !mediaComposer.items.length) { alert('Add media first!'); return; }
 
@@ -1473,11 +1648,13 @@ async function startExport() {
   exportCanvas.width  = canvas.width;
   exportCanvas.height = canvas.height;
   const exportCtx = exportCanvas.getContext('2d');
+  const exportGpu = new GPUProcessor(document.createElement('canvas'));
+  exportGpu.canvas.width  = canvas.width;
+  exportGpu.canvas.height = canvas.height;
 
-  const stream = exportCanvas.captureStream(EXPORT_FPS);
-
-  
   exportAudioSources = [];
+  let audioStream = null;
+
   if (audioTracks.length > 0) {
     document.getElementById('exportStatus').textContent = '⏳ Decoding audio...';
     exportAudioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -1485,8 +1662,6 @@ async function startExport() {
 
     for (const track of audioTracks) {
       try {
-        
-        
         const response = await fetch(track.url);
         const buffer   = await exportAudioContext.decodeAudioData(await response.arrayBuffer());
         const source   = exportAudioContext.createBufferSource();
@@ -1502,8 +1677,7 @@ async function startExport() {
         const playDuration = Math.max(0, exportRange - Math.max(0, offset - inPoint));
 
         if (playDuration > 0 && bufferOffset < buffer.duration) {
-          
-          
+
           const audioStartTime = exportAudioContext.currentTime + 0.1;
           source.start(
             audioStartTime,
@@ -1515,7 +1689,12 @@ async function startExport() {
       } catch(e) { console.warn('Audio export error:', e); }
     }
 
-    destination.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+    audioStream = destination.stream;
+  }
+
+  const stream = exportCanvas.captureStream(0);
+  if (audioStream) {
+    audioStream.getAudioTracks().forEach(t => stream.addTrack(t));
   }
 
   const options = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
@@ -1524,7 +1703,6 @@ async function startExport() {
 
   mediaRecorder = new MediaRecorder(stream, options);
   mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-  mediaRecorder.start();
 
   document.getElementById('exportStartBtn').disabled     = true;
   document.getElementById('exportStartBtn').style.opacity = '0.5';
@@ -1533,33 +1711,82 @@ async function startExport() {
   document.getElementById('exportStatus').textContent     = '⏳ Rendering frames...';
   resetExportProgress();
 
-  const playbackStart   = inPoint;
-  const playbackEnd     = getPlaybackEndTime();
-  const totalDuration   = playbackEnd - playbackStart;
-  const totalFrames     = Math.ceil(totalDuration * EXPORT_FPS);
-  const frameDurationMs = 1000 / EXPORT_FPS;
+  const playbackStart  = inPoint;
+  const playbackEnd    = getPlaybackEndTime();
+  const totalDuration  = playbackEnd - playbackStart;
+  const totalFrames    = Math.ceil(totalDuration * EXPORT_FPS);
 
-  if (!gpu) {
-    const off = document.createElement('canvas');
-    off.width = canvas.width; off.height = canvas.height;
-    gpu = new GPUProcessor(off);
-  }
-  
-  for (let frame = 0; frame < totalFrames; frame++) {
-    if (offlineExportCancelled) break;
+  const savedCanvas = mediaComposer.canvas;
+  const savedCtx    = mediaComposer.ctx;
+  mediaComposer.canvas = exportCanvas;
+  mediaComposer.ctx    = exportCtx;
 
-    const t = playbackStart + frame / EXPORT_FPS;
-    renderCompositionMedia(t, false); 
-    applyCompositionEffects(t);
-    renderTextOverlays(t);
-    exportCtx.drawImage(canvas, 0, 0);
+  mediaRecorder.start();
 
-    updateExportProgress(frame / EXPORT_FPS, totalDuration);
+  try {
+    for (let frame = 0; frame < totalFrames; frame++) {
+      if (offlineExportCancelled) break;
 
-    
-    
-    const targetNext = performance.now() + frameDurationMs;
-    await new Promise(resolve => setTimeout(resolve, Math.max(0, targetNext - performance.now())));
+      const t = playbackStart + frame / EXPORT_FPS;
+
+      await _seekAllVideosToTime(t);
+
+      exportCtx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+      exportCtx.fillStyle = '#000';
+      exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+      renderCompositionMedia(t, false, exportCanvas, exportCtx);
+
+      const activeEffects = timelineEffects.filter(e => e && t >= e.start && t <= e.end);
+      if (activeEffects.length > 0) {
+
+        const chain = [];
+        for (const effect of activeEffects) {
+          const v = effect.value;
+          if (effect.type === 'brightness' && typeof v === 'number')
+            chain.push({ fragmentShaderSource: `precision mediump float; uniform sampler2D image; uniform float brightness; varying vec2 texCoord; void main(){vec4 c=texture2D(image,texCoord);gl_FragColor=vec4(c.rgb*brightness,c.a);}`, uniforms: { brightness: v } });
+          else if (effect.type === 'contrast' && typeof v === 'number')
+            chain.push({ fragmentShaderSource: `precision mediump float; uniform sampler2D image; uniform float contrast; varying vec2 texCoord; void main(){vec4 c=texture2D(image,texCoord);c.rgb=(c.rgb-0.5)*contrast+0.5;gl_FragColor=c;}`, uniforms: { contrast: v } });
+          else if (effect.type === 'saturation' && typeof v === 'number')
+            chain.push({ fragmentShaderSource: `precision mediump float; uniform sampler2D image; uniform float saturation; varying vec2 texCoord; void main(){vec4 c=texture2D(image,texCoord);float g=dot(c.rgb,vec3(0.299,0.587,0.114));gl_FragColor=vec4(mix(vec3(g),c.rgb,saturation),c.a);}`, uniforms: { saturation: v } });
+          else if (effect.type === 'blur' && typeof v === 'number')
+            chain.push({ fragmentShaderSource: `precision mediump float; uniform sampler2D image; uniform float blur; uniform vec2 u_resolution; varying vec2 texCoord; void main(){vec2 s=vec2(blur)/u_resolution;vec4 c=vec4(0.0);c+=texture2D(image,texCoord+vec2(-s.x,-s.y))*0.0625;c+=texture2D(image,texCoord+vec2(0.,-s.y))*0.125;c+=texture2D(image,texCoord+vec2(s.x,-s.y))*0.0625;c+=texture2D(image,texCoord+vec2(-s.x,0.))*0.125;c+=texture2D(image,texCoord)*0.25;c+=texture2D(image,texCoord+vec2(s.x,0.))*0.125;c+=texture2D(image,texCoord+vec2(-s.x,s.y))*0.0625;c+=texture2D(image,texCoord+vec2(0.,s.y))*0.125;c+=texture2D(image,texCoord+vec2(s.x,s.y))*0.0625;gl_FragColor=c;}`, uniforms: { blur: v } });
+          else if (effect.type === 'grayscale')
+            chain.push({ fragmentShaderSource: `precision mediump float; uniform sampler2D image; varying vec2 texCoord; void main(){vec4 c=texture2D(image,texCoord);float g=dot(c.rgb,vec3(0.299,0.587,0.114));gl_FragColor=vec4(vec3(g),c.a);}`, uniforms: {} });
+          else if (effect.type === 'sepia')
+            chain.push({ fragmentShaderSource: `precision mediump float; uniform sampler2D image; varying vec2 texCoord; void main(){vec4 c=texture2D(image,texCoord);vec3 s;s.r=dot(c.rgb,vec3(0.393,0.769,0.189));s.g=dot(c.rgb,vec3(0.349,0.686,0.168));s.b=dot(c.rgb,vec3(0.272,0.534,0.131));gl_FragColor=vec4(s,c.a);}`, uniforms: {} });
+        }
+        if (chain.length > 0) {
+          try {
+            const src    = exportCtx.getImageData(0, 0, exportCanvas.width, exportCanvas.height);
+            const result = exportGpu.applyEffectChain(src, chain);
+            exportCtx.putImageData(result, 0, 0);
+          } catch(e) { console.warn('Export effect error:', e); }
+        }
+      }
+
+      const savedMainCtx = ctx;
+
+      _renderTextOverlaysToCtx(exportCtx, t, exportCanvas.width, exportCanvas.height);
+
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack && typeof videoTrack.requestFrame === 'function') {
+        videoTrack.requestFrame();
+      } else if (typeof stream.requestFrame === 'function') {
+        stream.requestFrame();
+      } else {
+        await new Promise(requestAnimationFrame);
+      }
+
+      updateExportProgress(frame / EXPORT_FPS, totalDuration);
+
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+  } finally {
+
+    mediaComposer.canvas = savedCanvas;
+    mediaComposer.ctx    = savedCtx;
+    exportGpu.destroy();
   }
 
   compositionCurrentTime = offlineExportCancelled ? inPoint : playbackEnd;
@@ -1591,6 +1818,27 @@ async function startExport() {
   };
 
   mediaRecorder.stop();
+}
+
+function _renderTextOverlaysToCtx(targetCtx, currentTime, w, h) {
+  textOverlays.forEach(text => {
+    const start = Number.isFinite(text.start) ? text.start : 0;
+    const dur   = Number.isFinite(text.dur)   ? text.dur   : 5;
+    if (currentTime < start || currentTime > start + dur) return;
+    const size = text.sz || 40;
+    targetCtx.save();
+    targetCtx.font         = `${text.style === 'bold' ? '700 ' : ''}${size}px Segoe UI, sans-serif`;
+    targetCtx.fillStyle    = text.col || '#ffffff';
+    targetCtx.textAlign    = 'center';
+    targetCtx.textBaseline = 'middle';
+    targetCtx.shadowColor  = 'rgba(0,0,0,0.75)';
+    targetCtx.shadowBlur   = 8;
+    const y = text.pos === 'top'
+      ? h * 0.15
+      : text.pos === 'bottom' ? h * 0.85 : h * 0.5;
+    targetCtx.fillText(text.content, w / 2, y);
+    targetCtx.restore();
+  });
 }
 
 function openProjectDb() {
@@ -1687,12 +1935,6 @@ function getProjectFileEntries() {
   return entries;
 }
 
-async function pruneUnusedProjectFiles(validIds, previousRaw) {
-  const raw = previousRaw ?? localStorage.getItem(PROJECT_STORAGE_KEY + '_chunks');
-  if (!raw) return;
-  
-}
-
 function collectProjectState() {
   return {
     version:               1,
@@ -1740,22 +1982,18 @@ async function _doSave(isAutoSave = false) {
   const state = collectProjectState();
   const json  = JSON.stringify(state);
 
-  
   try {
     if (typeof CompressionStream !== 'undefined') {
       const compressed = await _compress(json);
       _saveChunks(PROJECT_STORAGE_KEY, compressed);
     } else {
-      
       const enc = new TextEncoder().encode(json);
       _saveChunks(PROJECT_STORAGE_KEY, enc);
     }
   } catch(e) {
-    
     localStorage.setItem(PROJECT_STORAGE_KEY, json);
   }
 
-  
   if (isAutoSave) {
     const slot = _rotateAutoSaves();
     localStorage.setItem(`${PROJECT_STORAGE_KEY}_auto_${slot}`, String(Date.now()));
@@ -1785,7 +2023,6 @@ async function saveProject() {
 }
 
 async function loadProject() {
-  
   let raw = null;
   try {
     const bytes = _loadChunks(PROJECT_STORAGE_KEY);
@@ -1796,9 +2033,9 @@ async function loadProject() {
         raw = new TextDecoder().decode(bytes);
       }
     }
-  } catch(e) {  }
+  } catch(e) {}
 
-  if (!raw) raw = localStorage.getItem(PROJECT_STORAGE_KEY); 
+  if (!raw) raw = localStorage.getItem(PROJECT_STORAGE_KEY);
   if (!raw) { alert('No saved project found in this browser.'); return; }
 
   try {
@@ -2099,7 +2336,7 @@ function applyStoredTheme() {
 
 window.addEventListener('load', () => {
   applyStoredTheme();
-  
+
   new ErrorBoundary();
 
   window.addEventListener('webgl:lost',     () => showToast({ message: 'GPU context lost — switched to Canvas 2D fallback.', type: 'error' }));

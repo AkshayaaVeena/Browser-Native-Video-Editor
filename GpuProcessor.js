@@ -133,6 +133,10 @@ class GPUProcessor {
     this.texture      = null;
     this.videoTexture = null;
     this.posBuffer    = null;
+    this._ppFBO       = null;
+    this._ppTex       = null;
+    this._ppW         = 0;
+    this._ppH         = 0;
     this.resources.clear();
     this._initGL();
     this.useWebGL = !!this.gl;
@@ -289,7 +293,7 @@ class GPUProcessor {
 
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // restore for image uploads
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); 
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuffer);
 
@@ -302,6 +306,173 @@ class GPUProcessor {
     }
 
     this.executePipeline(program, uniforms);
+  }
+
+  _ensurePingPong(w, h) {
+    const gl = this.gl;
+    if (!gl) return false;
+
+    if (this._ppW === w && this._ppH === h && this._ppFBO) return true;
+
+    // Clean up stale FBOs/textures
+    if (this._ppFBO) {
+      try { gl.deleteFramebuffer(this._ppFBO[0]); gl.deleteFramebuffer(this._ppFBO[1]); } catch(e) {}
+      try { gl.deleteTexture(this._ppTex[0]); gl.deleteTexture(this._ppTex[1]); } catch(e) {}
+    }
+
+    this._ppFBO = [gl.createFramebuffer(), gl.createFramebuffer()];
+    this._ppTex = [gl.createTexture(),     gl.createTexture()];
+
+    for (let i = 0; i < 2; i++) {
+      gl.bindTexture(gl.TEXTURE_2D, this._ppTex[i]);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this._ppFBO[i]);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this._ppTex[i], 0);
+    }
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+
+    this._ppW = w;
+    this._ppH = h;
+    return true;
+  }
+
+  /**
+   * Apply multiple effects in a single GPU round-trip.
+   *
+   * @param {ImageData} imageData  — source pixels
+   * @param {Array}     chain      — [{fragmentShaderSource, uniforms}, ...]
+   * @returns {ImageData}
+   *
+   * How it works:
+   *  1. Upload source pixels into this.texture once (texImage2D ×1).
+   *  2. For each pass, bind ppFBO[pingPong] as the render target and
+   *     ppTex[1-pingPong] as the input texture, alternating back and forth.
+   *  3. After the last pass the result is in ppFBO[pingPong].
+   *  4. Read back once (readPixels ×1) and return a new ImageData.
+   *
+   * Cost for N effects:  1 upload + N draws + 1 readback
+   *                      (was: N uploads + N draws + N readbacks)
+   */
+  applyEffectChain(imageData, chain) {
+    if (!chain || chain.length === 0) return imageData;
+    if (!this.useWebGL) return this._applyChainFallback(imageData, chain);
+    const gl = this.gl;
+    if (!gl) return imageData;
+
+    const w = imageData.width;
+    const h = imageData.height;
+
+    // Sync canvas size
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width  = w;
+      this.canvas.height = h;
+    }
+
+    // If we only have one pass, use the simpler applyEffect path (no FBO needed)
+    if (chain.length === 1) {
+      return this.applyEffect(imageData, chain[0].fragmentShaderSource, chain[0].uniforms || {});
+    }
+
+    if (!this._ensurePingPong(w, h)) return imageData;
+
+    // --- Pass 0: upload source into this.texture ---
+    //
+    // IMPORTANT (Y-FLIP FIX): unlike the single-pass applyEffect() path,
+    // which renders to the default framebuffer (the visible/readback
+    // surface) and therefore needs UNPACK_FLIP_Y_WEBGL=true to cancel out
+    // WebGL's bottom-left screen origin, applyEffectChain() NEVER touches
+    // the default framebuffer — every pass renders into an FBO-backed
+    // texture, and the final result is read back with readPixels() from
+    // that same FBO. Per the WebGL/OpenGL FBO convention, "which way is up"
+    // in an offscreen framebuffer is arbitrary as long as upload, render,
+    // and readback all agree with each other — there is no display surface
+    // to match. The shared vertexShaderSource's texCoord mapping was
+    // designed to cancel out the upload flip specifically for the
+    // canvas-display case; reusing it for FBO-to-FBO passes broke that
+    // cancellation and produced a flipped result whenever 2+ effects were
+    // chained. Fix: upload WITHOUT the flip, so source row order, FBO
+    // render order, and readPixels row order all agree with no flip
+    // anywhere in the chain.
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, imageData.data);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); // restore default for other callers (applyEffect, renderVideoFrame)
+
+    let pingPong = 0; // will write into ppFBO[0] first
+
+    for (let i = 0; i < chain.length; i++) {
+      const { fragmentShaderSource, uniforms = {} } = chain[i];
+
+      let program = this.programCache[fragmentShaderSource];
+      if (!program) {
+        program = this.createProgram(this.vertexShaderSource, fragmentShaderSource);
+        if (!program) return imageData;
+        this.programCache[fragmentShaderSource] = program;
+      }
+
+      const isLast = (i === chain.length - 1);
+
+      // Bind target: for all passes render into an FBO; on the last pass
+      // we could render to screen but we still need readPixels, so keep FBO.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this._ppFBO[pingPong]);
+      gl.viewport(0, 0, w, h);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      // Input texture: for the first pass it's this.texture (already bound);
+      // for subsequent passes it's the result of the previous pass.
+      gl.activeTexture(gl.TEXTURE0);
+      if (i === 0) {
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+      } else {
+        gl.bindTexture(gl.TEXTURE_2D, this._ppTex[1 - pingPong]);
+      }
+
+      gl.useProgram(program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuffer);
+      gl.enableVertexAttribArray(program.positionLocation);
+      gl.vertexAttribPointer(program.positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+      const imageLoc = this.getUniformLocation(program, 'image');
+      if (imageLoc !== null) gl.uniform1i(imageLoc, 0);
+
+      const resLoc = this.getUniformLocation(program, 'u_resolution');
+      if (resLoc !== null) gl.uniform2f(resLoc, w, h);
+
+      for (const key in uniforms) {
+        this.setUniform(program, key, uniforms[key]);
+      }
+
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+      pingPong = 1 - pingPong; // swap
+    }
+
+    // Result is in ppFBO[pingPong-1], i.e. ppFBO[1 - pingPong after the last swap]
+    const resultFBO = this._ppFBO[1 - pingPong];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, resultFBO);
+    const result = new Uint8ClampedArray(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, result);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    return new ImageData(result, w, h);
+  }
+
+  // Canvas-2D software fallback for applyEffectChain when WebGL is unavailable.
+  // Passes are run sequentially via the existing per-effect CPU paths (no-op here;
+  // callers should fall back to individual effect calls).
+  _applyChainFallback(imageData, chain) {
+    // Without WebGL we can't run GLSL; return source unchanged and let the
+    // caller decide whether to degrade gracefully.
+    return imageData;
   }
 
   // ===== EFFECTS =====
@@ -535,6 +706,14 @@ class GPUProcessor {
       try { if (gl) gl.deleteProgram(p); } catch(e) {}
     });
     this.programCache = {};
+    if (gl && this._ppFBO) {
+      try { gl.deleteFramebuffer(this._ppFBO[0]); gl.deleteFramebuffer(this._ppFBO[1]); } catch(e) {}
+      try { gl.deleteTexture(this._ppTex[0]);     gl.deleteTexture(this._ppTex[1]);     } catch(e) {}
+    }
+    this._ppFBO = null;
+    this._ppTex = null;
+    this._ppW   = 0;
+    this._ppH   = 0;
     this.resources.disposeAll(gl);
     this.texture      = null;
     this.videoTexture = null;

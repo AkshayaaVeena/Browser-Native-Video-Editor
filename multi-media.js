@@ -43,9 +43,9 @@ class MediaComposer {
           element:        video,
           video,
           startTime,
-          duration:       sourceDuration,
+          duration:        sourceDuration,
           sourceDuration,
-          trimStart:      0,
+          trimStart:       0,
           properties: {
             opacity:   1,
             scale:     1,
@@ -295,7 +295,7 @@ class MediaComposer {
 
     const rightItem = {
       ...item,
-      id:         `${item.type}-${Date.now()}-${Math.random()}`,
+      id:          `${item.type}-${Date.now()}-${Math.random()}`,
       startTime:  item.startTime + offsetIntoItem,
       duration:   rightDuration,
       trimStart:  (item.trimStart || 0) + sourceOffsetConsumed,
@@ -349,7 +349,7 @@ class MediaComposer {
       const rightTrimStart = (item.trimStart || 0) + offsetIntoItemEnd * speed;
       const rightItem = {
         ...item,
-        id:         `${item.type}-${Date.now()}-${Math.random()}`,
+        id:          `${item.type}-${Date.now()}-${Math.random()}`,
         startTime:  start, 
         duration:   rightDuration,
         trimStart:  rightTrimStart,
@@ -398,10 +398,10 @@ class MediaComposer {
       url:             clipboard.url,
       element:        null, 
       startTime:      t,
-      duration:       clipboard.duration,
+      duration:        clipboard.duration,
       sourceDuration: clipboard.sourceDuration,
-      trimStart:      clipboard.trimStart,
-      properties:     { ...clipboard.properties }
+      trimStart:       clipboard.trimStart,
+      properties:      { ...clipboard.properties }
     };
 
     if (clipboard.type === 'video') {
@@ -425,8 +425,6 @@ class MediaComposer {
     this.items.splice(insertIndex, 0, newItem);
     this.lastSeekTimes[newItem.id] = -999;
     this._retainUrl(newItem.url); 
-                                   
-                                   
     this._retainUrl(newItem.url); 
 
     if (this.compositionMode === 'sequential') this.compositionMode = 'overlay';
