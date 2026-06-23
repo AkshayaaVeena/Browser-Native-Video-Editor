@@ -1,115 +1,103 @@
-# 🎬 GPU Video Editor 
+GPU Video Editor
 
 A browser-based video editor with WebGL-accelerated effects, multi-media composition, AI-assisted cutting, and offline frame-accurate export.
 
----
+Files
 
-## Files
+video-editor.html → Main application (open directly in browser)
+GpuProcessor.js → WebGL effect pipeline (brightness, contrast, blur, etc.)
+magic-cut.js → Scene detection and silence-based cut suggestions
+multi-media.js → Timeline composition engine for video and images
+styles.css → UI styling (neon theme)
+backend-server.js → Optional Express server for local development
 
-| File | Purpose |
-|---|---|
-| `video-editor.html` | Main app — open this in your browser |
-| `GpuProcessor.js` | WebGL effect pipeline (brightness, contrast, blur, etc.) |
-| `magic-cut.js` | AI scene detection and silence analysis |
-| `multi-media.js` | Timeline composition engine (video + images) |
-| `styles.css` | Neon purple theme |
-| `backend-server.js` | Optional Express server for local serving |
+Quick Start
 
----
+Option A: Direct usage (no setup required)
+Open video-editor.html in Chrome or Firefox.
 
-## Quick Start
+Option B: Local server
 
-**Option A — Direct (no server needed)**
-Just open `video-editor.html` in Chrome or Firefox. No build step, no install.
-
-**Option B — Local server**
-```bash
 npm install express dotenv
 node backend-server.js
-# Open http://localhost:3001
-```
 
----
+Then open:
+http://localhost:3001
 
-## Features
+Features
 
-### Media
-- Add multiple videos and images to a shared timeline
-- Three composition modes: **Sequential** (one after another), **Overlay** (simultaneous layers), **Split** (grid view)
-- Drag clips to reposition, drag handles to trim start/end
-- Undo / redo up to 50 steps (`Ctrl+Z` / `Ctrl+Y`)
+Media handling
 
-### Color & Filters
-- Brightness, contrast, saturation, blur, sharpen
-- Hue shift, vibrance, vignette, exposure, temperature
-- Grayscale, sepia, invert
-- Cinematic and Vibrant presets
+Multi-clip timeline supporting video and images
+Composition modes: Sequential, Overlay, Split (grid)
+Drag-to-reposition clips and trim handles
+Undo/redo support (up to 50 steps)
 
-### Transitions
-- Fade, zoom, slide, blur — applied between any two adjacent clips
-- Adjustable duration (0.1 – 2 s)
+Color and filters
 
-### Audio
-- Add a background audio track with per-track volume and start offset
-- Audio syncs precisely to the composition during both preview and export
+Brightness, contrast, saturation, blur, sharpen
+Hue shift, vibrance, vignette, exposure, temperature
+Grayscale, sepia, invert
+Preset color styles
 
-### Text Overlays
-- Custom text at top / center / bottom
-- Control color, size, start time, and duration
+Transitions
 
-### AI Magic Cut
-- Scans video frames to find high-interest moments
-- Detects silence regions for automatic cut suggestions
-- Adaptive sampling — faster on long videos (up to 5 s interval for 1 hr+ footage)
-- Apply detected cut points directly to the timeline
+Fade, zoom, slide, blur between clips
+Adjustable duration per transition
 
-### Export
-- Frame-accurate offline render at 30 fps
-- Audio pre-decoded before export starts — no drift
-- Downloads as `.webm` (VP9 + Opus where supported)
-- Cancel mid-export without saving a partial file
+Audio
 
-### Project Save / Load
-- Media files stored in IndexedDB; metadata stored in localStorage
-- Project JSON is gzip-compressed and split into 10 MB chunks to handle large projects
-- Auto-saves every 30 s, keeping the last 3 auto-save slots
-- Warns clearly if any clips are missing on load
+Background audio support
+Volume and start offset control
+Synchronized playback during preview and export
 
----
+Text overlays
 
-## Keyboard Shortcuts
+Position-based text layers (top, center, bottom)
+Controls for timing, size, color, and duration
 
-| Key | Action |
-|---|---|
-| `Space` | Play / Pause |
-| `I` | Set in point |
-| `O` | Set out point |
-| `Delete` / `Backspace` | Delete selected clip |
-| `Ctrl+Z` | Undo |
-| `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
+AI-assisted editing (Magic Cut)
 
----
+Detects high-interest frames and silent segments
+Suggests automatic cut points
+Adaptive sampling for longer videos
 
-## Browser Support
+Export
 
-| Browser | Status |
-|---|---|
-| Chrome 94+ | ✅ Full support |
-| Firefox 90+ | ✅ Full support |
-| Safari 15+ | ✅ Supported (Safari-specific WebGL quirks handled) |
-| Edge 94+ | ✅ Full support |
-| Mobile Chrome / Safari | ✅ Touch-optimised (44 px tap targets) |
+Frame-accurate offline rendering at 30 fps
+Pre-decoded audio to avoid sync drift
+WebM output (VP9/Opus where supported)
+Cancel export without partial file output
 
-WebGL is required for GPU effects. If unavailable, the editor falls back to Canvas 2D automatically and shows a notification.
+Project management
 
----
+IndexedDB storage for media files
+Compressed project JSON storage
+Auto-save with multiple recovery slots
+Missing file detection on reload
 
-## Known Limitations
+Keyboard shortcuts
 
-- Export produces `.webm` — use [FFmpeg](https://ffmpeg.org) to convert to `.mp4` if needed:
-  ```bash
-  ffmpeg -i composition.webm -c:v libx264 -c:a aac output.mp4
-  ```
-- Very long exports (30+ min) may hit browser memory limits. Split into segments if needed.
-- Project files are stored in the browser — clearing site data will erase saved projects. Back up by re-saving after each session.
-- `MediaRecorder` is not available in Safari 14 and below — export requires Safari 15+.
+Space: Play / Pause
+I: Set in point
+O: Set out point
+Delete / Backspace: Remove selected clip
+Ctrl+Z: Undo
+Ctrl+Y / Ctrl+Shift+Z: Redo
+
+Browser support
+
+Chrome 94+ fully supported
+Firefox 90+ fully supported
+Edge 94+ fully supported
+Safari 15+ supported (WebGL-specific handling included)
+Mobile browsers supported with touch optimization
+
+WebGL is required for GPU effects. If unavailable, the editor falls back to Canvas 2D.
+
+Known limitations
+
+Output format is WebM; MP4 requires external conversion via FFmpeg
+Long exports may hit browser memory limits (recommended to split large projects)
+Projects are stored locally in the browser; clearing storage will remove them
+Older Safari versions do not support MediaRecorder (requires Safari 15+)
